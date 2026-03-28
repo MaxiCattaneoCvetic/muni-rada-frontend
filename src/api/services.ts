@@ -1,13 +1,15 @@
 import api from './client';
 import type {
   LoginResponse, Pedido, Presupuesto, Sellado, Pago, User,
-  SistemaConfig, CreateUserDto, PedidoStage,
+  SistemaConfig, CreateUserDto, UserRole,
 } from '../types';
 
 // ── AUTH ──────────────────────────────────────────────────────────────
 export const authApi = {
   login: (email: string, password: string) =>
     api.post<LoginResponse>('/auth/login', { email, password }).then(r => r.data),
+  demo: (rol: UserRole) =>
+    api.post<LoginResponse>('/auth/demo', { rol }).then(r => r.data),
 };
 
 // ── USERS ─────────────────────────────────────────────────────────────

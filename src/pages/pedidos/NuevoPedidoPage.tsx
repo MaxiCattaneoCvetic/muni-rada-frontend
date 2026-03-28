@@ -28,13 +28,14 @@ export function NuevoPedidoPage() {
   };
 
   return (
-    <div className="max-w-lg mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Nuevo pedido</h1>
-        <p className="text-slate-500 text-sm mt-1">El pedido irá a Secretaría para aprobación</p>
+    <div className="page-shell-compact">
+      <div className="page-heading">
+        <div className="page-kicker">Solicitud</div>
+        <h1 className="page-title">Nuevo pedido</h1>
+        <p className="page-subtitle">El pedido irá a Secretaría para aprobación y luego seguirá el flujo interno.</p>
       </div>
       <div className="card p-6">
-        {error && <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{error}</div>}
+        {error && <div className="alert alert-danger">{error}</div>}
         <form onSubmit={submit} className="space-y-5">
           <div>
             <label className="label">¿Qué necesitás? *</label>
@@ -55,10 +56,8 @@ export function NuevoPedidoPage() {
             <label className="label">Detalles adicionales</label>
             <textarea value={form.detalle} onChange={e => setForm(f => ({ ...f, detalle: e.target.value }))} className="input resize-none" rows={3} placeholder="Marca, modelo, especificaciones técnicas..." />
           </div>
-          <div className="flex items-center gap-3 p-4 bg-amber-50 border border-amber-200 rounded-xl cursor-pointer" onClick={() => setForm(f => ({ ...f, urgente: !f.urgente }))}>
-            <div className={`w-10 h-6 rounded-full relative transition-colors ${form.urgente ? 'bg-red-500' : 'bg-slate-300'}`}>
-              <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${form.urgente ? 'translate-x-5' : 'translate-x-1'}`} />
-            </div>
+          <div className="toggle-card cursor-pointer" onClick={() => setForm(f => ({ ...f, urgente: !f.urgente }))}>
+            <div className={`toggle-pill ${form.urgente ? 'on' : ''}`} />
             <div>
               <div className="text-sm font-semibold text-amber-800">Marcar como urgente</div>
               <div className="text-xs text-amber-600">Solo para casos realmente prioritarios</div>

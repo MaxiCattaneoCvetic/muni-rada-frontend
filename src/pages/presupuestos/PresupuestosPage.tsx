@@ -2,16 +2,23 @@ import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { pedidosApi, presupuestosApi } from '../../api/services';
+import { PedidoStage } from '../../types';
 import { formatMoney, formatDate } from '../../lib/utils';
-import { Trash2, Plus, ArrowLeft, Send } from 'lucide-react';
+import { Trash2, Plus, ArrowLeft, Send, ChevronRight } from 'lucide-react';
 
 export function PresupuestosPage() {
   const { pedidoId } = useParams<{ pedidoId: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
 
-  const { data: pedido } = useQuery({ queryKey: ['pedido', pedidoId], queryFn: () => pedidosApi.getById(pedidoId!) });
-  const { data: presupuestos = [] } = useQuery({ queryKey: ['presupuestos', pedidoId], queryFn: () => presupuestosApi.getByPedido(pedidoId!) });
+  const { data: pedidosPendientes = [] } = useQuery({
+    queryKey: ['pedidos-presupuestos'],
+    queryFn: () => pedidosApi.getAll(),
+    select: (items) => items.filter((p) => p.stage === PedidoStage.PRESUPUESTOS),
+    enabled: !pedidoId,
+  });
+  const { data: pedido } = useQuery({ queryKey: ['pedido', pedidoId], queryFn: () => pedidosApi.getById(pedidoId!), enabled: !!pedidoId });
+  const { data: presupuestos = [] } = useQuery({ queryKey: ['presupuestos', pedidoId], queryFn: () => presupuestosApi.getByPedido(pedidoId!), enabled: !!pedidoId });
 
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ proveedor: '', monto: '', plazoEntrega: '', contacto: '', notas: '' });
@@ -38,9 +45,51 @@ export function PresupuestosPage() {
   const minPresup = 3;
   const listo = presupuestos.length >= minPresup;
 
+  if (!pedidoId) {
+    return (
+      <div className="page-shell-form">
+        <div className="page-heading">
+          <div className="page-kicker">Compras</div>
+          <h1 className="page-title">Presupuestos</h1>
+          <p className="page-subtitle">Seleccioná un pedido pendiente para cargar y comparar presupuestos.</p>
+        </div>
+
+        <div className="space-y-3">
+          {pedidosPendientes.length === 0 ? (
+            <div className="card empty-state">
+              <div className="empty-icon">💰</div>
+              <div className="empty-title">No hay pedidos esperando presupuestos</div>
+              <div className="empty-copy">Cuando Secretaría apruebe un pedido, aparecerá acá.</div>
+            </div>
+          ) : pedidosPendientes.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() => navigate(`/presupuestos/${p.id}`)}
+              className="card w-full p-5 text-left transition-all hover:-translate-y-0.5"
+              style={{ borderLeft: '4px solid var(--purple-mid)' }}
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <div className="font-mono text-xs text-slate-400">{p.numero}</div>
+                  <div className="mt-1 text-base font-bold text-slate-900">{p.descripcion}</div>
+                  <div className="mt-1 text-sm text-slate-500">📍 {p.area}</div>
+                </div>
+                <div className="flex items-center gap-2 text-sm font-semibold text-purple-700">
+                  Abrir
+                  <ChevronRight size={16} />
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 text-sm font-medium">
+    <div className="page-shell-form">
+      <button onClick={() => navigate(-1)} className="back-link">
         <ArrowLeft size={16} /> Volver
       </button>
 
@@ -59,11 +108,11 @@ export function PresupuestosPage() {
             )}
           </div>
           {!listo && (
-            <div className="mt-3 px-4 py-3 bg-amber-50 border border-amber-200 rounded-xl text-amber-700 text-sm font-medium">
+            <div className="alert alert-warning mt-3 mb-0">
               ⏳ Faltan {minPresup - presupuestos.length} presupuesto{minPresup - presupuestos.length !== 1 ? 's' : ''} para poder enviar a Secretaría
             </div>
           )}
-          {error && <div className="mt-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{error}</div>}
+          {error && <div className="alert alert-danger mt-3 mb-0">{error}</div>}
         </div>
       )}
 
@@ -73,7 +122,7 @@ export function PresupuestosPage() {
           <span className="text-sm font-semibold text-slate-700">Presupuestos cargados</span>
           <span className="text-sm font-bold text-blue-600">{presupuestos.length} / {minPresup}</span>
         </div>
-        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+        <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--surface2)' }}>
           <div
             className={`h-full rounded-full transition-all ${listo ? 'bg-green-500' : 'bg-blue-500'}`}
             style={{ width: `${Math.min((presupuestos.length / minPresup) * 100, 100)}%` }}
@@ -105,7 +154,7 @@ export function PresupuestosPage() {
               </div>
             )}
             <div className="mt-3 flex items-center justify-between">
-              {p.archivoUrl && <a href={p.archivoUrl} target="_blank" rel="noreferrer" className="text-xs text-blue-600 font-semibold hover:underline">📄 Ver PDF</a>}
+              {p.archivoUrl && <a href={p.archivoUrl} target="_blank" rel="noreferrer" className="doc-link">📄 Ver PDF</a>}
               <button onClick={() => delMut.mutate(p.id)} className="btn btn-xs btn-danger ml-auto gap-1">
                 <Trash2 size={12} /> Eliminar
               </button>

@@ -2,7 +2,9 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useAuthStore } from './store/auth.store';
 import { AppLayout } from './components/layout/AppLayout';
+import { demoLoginPath, isDemoMode } from './lib/demo';
 import LoginPage from './pages/auth/LoginPage';
+import DemoEntryPage from './pages/auth/DemoEntryPage';
 import ChangePasswordPage from './pages/auth/ChangePasswordPage';
 import { MiPerfilPage } from './pages/auth/MiPerfilPage';
 import DashboardPage from './pages/dashboard/DashboardPage';
@@ -10,7 +12,7 @@ import { NuevoPedidoPage } from './pages/pedidos/NuevoPedidoPage';
 import { PedidoDetallePage } from './pages/pedidos/PedidoDetallePage';
 import { PresupuestosPage } from './pages/presupuestos/PresupuestosPage';
 import {
-  TesoreriaPage, HistorialPage, AdminConfigPage, AdminPedidosPage,
+  TesoreriaPage, HistorialPage, AdminConfigPage, AdminPedidosPage, FacturasPage,
 } from './pages/admin/AdminPages';
 import { AdminUsuariosPage } from './pages/admin/AdminUsuariosPage';
 
@@ -20,7 +22,7 @@ const qc = new QueryClient({
 
 function Guard({ children, roles }: { children: React.ReactNode; roles?: string[] }) {
   const { isAuthenticated, user } = useAuthStore();
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (!isAuthenticated) return <Navigate to={demoLoginPath()} replace />;
   if (roles && user && !roles.includes(user.rol)) return <Navigate to="/dashboard" replace />;
   return <>{children}</>;
 }
@@ -28,16 +30,22 @@ function Guard({ children, roles }: { children: React.ReactNode; roles?: string[
 function AppInner() {
   return (
     <Routes>
-      <Route path="/dashboard" element={<DashboardPage />} />
+      <Route path="/dashboard" element={<DashboardPage mode="dashboard" />} />
       <Route path="/mi-perfil" element={<MiPerfilPage />} />
       <Route path="/nuevo-pedido" element={<NuevoPedidoPage />} />
       <Route path="/pedidos/:id" element={<PedidoDetallePage />} />
+      <Route path="/presupuestos" element={
+        <Guard roles={['compras', 'admin']}><PresupuestosPage /></Guard>
+      } />
       <Route path="/presupuestos/:pedidoId" element={<PresupuestosPage />} />
       <Route path="/historial" element={<HistorialPage />} />
-      <Route path="/aprobar" element={<DashboardPage />} />
-      <Route path="/firmar" element={<DashboardPage />} />
+      <Route path="/aprobar" element={<DashboardPage mode="aprobar" />} />
+      <Route path="/firmar" element={<DashboardPage mode="firmar" />} />
       <Route path="/pagos" element={
         <Guard roles={['tesoreria', 'admin']}><TesoreriaPage /></Guard>
+      } />
+      <Route path="/facturas" element={
+        <Guard roles={['tesoreria', 'admin']}><FacturasPage /></Guard>
       } />
       <Route path="/admin/pedidos" element={
         <Guard roles={['admin']}><AdminPedidosPage /></Guard>
@@ -58,11 +66,17 @@ function AppInner() {
 }
 
 export default function App() {
+  const demo = isDemoMode();
   return (
     <QueryClientProvider client={qc}>
       <BrowserRouter>
         <Routes>
-          <Route path="/login" element={<LoginPage />} />
+          <Route
+            path="/login"
+            element={demo ? <Navigate to="/demo" replace /> : <LoginPage />}
+          />
+          <Route path="/demo" element={<DemoEntryPage />} />
+          <Route path="/demo/:rol" element={<DemoEntryPage />} />
           <Route path="/cambiar-password" element={
             <Guard><ChangePasswordPage /></Guard>
           } />

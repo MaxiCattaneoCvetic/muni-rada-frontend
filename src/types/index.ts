@@ -23,6 +23,7 @@ export interface User {
   email: string;
   nombre: string;
   apellido: string;
+  nombreCompleto?: string;
   rol: UserRole;
   isActive: boolean;
   mustChangePassword: boolean;
@@ -39,15 +40,17 @@ export interface CreateUserDto {
 }
 
 // ── Pedidos ───────────────────────────────────────────────────────────
-export enum PedidoStage {
-  APROBACION = 1,
-  PRESUPUESTOS = 2,
-  FIRMA = 3,
-  GESTION_PAGOS = 4,
-  ESPERANDO_SUMINISTROS = 5,
-  SUMINISTROS_LISTOS = 6,
-  RECHAZADO = 7,
-}
+export const PedidoStage = {
+  APROBACION: 1,
+  PRESUPUESTOS: 2,
+  FIRMA: 3,
+  GESTION_PAGOS: 4,
+  ESPERANDO_SUMINISTROS: 5,
+  SUMINISTROS_LISTOS: 6,
+  RECHAZADO: 7,
+} as const;
+
+export type PedidoStage = (typeof PedidoStage)[keyof typeof PedidoStage];
 
 export const STAGE_LABELS: Record<number, string> = {
   1: 'Aprobación de suministros',
@@ -67,6 +70,36 @@ export const STAGE_AREA: Record<number, string> = {
   5: 'Administración',
   6: '—',
   7: '—',
+};
+
+export const STAGE_OWNER_LABELS: Record<number, string> = {
+  1: 'Secretaría',
+  2: 'Compras',
+  3: 'Secretaría',
+  4: 'Tesorería',
+  5: 'Administración / Suministros',
+  6: 'Administración',
+  7: 'Secretaría / Administración',
+};
+
+export const STAGE_HELP_COPY: Record<number, string> = {
+  1: 'Pedidos recién cargados que esperan la aprobación inicial de Secretaría para continuar el circuito.',
+  2: 'Compras debe buscar proveedores, comparar opciones y cargar los presupuestos de este pedido.',
+  3: 'Secretaría revisa los presupuestos cargados y firma la opción elegida para autorizar la compra.',
+  4: 'Tesorería registra sellados o pagos y destraba el pedido para que Suministros pueda avanzar.',
+  5: 'El pedido ya fue aprobado y pagado; ahora Suministros coordina la recepción o entrega.',
+  6: 'Pedidos terminados o recibidos. Ya no requieren acción operativa dentro del circuito normal.',
+  7: 'Pedidos rechazados que quedaron frenados hasta una nueva revisión.',
+};
+
+export const STAGE_PENDING_COPY: Record<number, string> = {
+  1: 'Pendiente de aprobación inicial.',
+  2: 'Pendiente de reunir, comparar y cargar presupuestos.',
+  3: 'Pendiente de firmar el presupuesto elegido.',
+  4: 'Pendiente de completar sellado y pago para destrabar la compra.',
+  5: 'Pendiente de entrega o recepción de los suministros.',
+  6: 'Pedido recibido y cerrado.',
+  7: 'Pedido rechazado y a la espera de revisión.',
 };
 
 export const STAGE_ICONS: Record<number, string> = {

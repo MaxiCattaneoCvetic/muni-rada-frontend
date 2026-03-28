@@ -29,16 +29,20 @@ export function MiPerfilPage() {
   };
 
   return (
-    <div className="max-w-lg mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900">Mi perfil</h1>
+    <div className="page-shell-compact">
+      <div className="page-heading">
+        <div className="page-kicker">Cuenta</div>
+        <h1 className="page-title">Mi perfil</h1>
+        <p className="page-subtitle">Gestioná tus datos y la firma utilizada en el flujo de suministros.</p>
+      </div>
 
       {/* User info */}
       <div className="card p-6 space-y-3">
         <h2 className="font-bold text-slate-700 text-sm uppercase tracking-wide">Datos personales</h2>
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <div><span className="text-slate-400">Nombre</span><div className="font-semibold">{user?.nombre} {user?.apellido}</div></div>
-          <div><span className="text-slate-400">Email</span><div className="font-semibold">{user?.email}</div></div>
-          <div><span className="text-slate-400">Rol</span><div className="font-semibold capitalize">{user?.rol}</div></div>
+        <div className="info-grid grid-cols-2 text-sm">
+          <div><div className="info-pair-label">Nombre</div><div className="info-pair-value">{user?.nombre} {user?.apellido}</div></div>
+          <div><div className="info-pair-label">Email</div><div className="info-pair-value">{user?.email}</div></div>
+          <div><div className="info-pair-label">Rol</div><div className="info-pair-value capitalize">{user?.rol}</div></div>
         </div>
       </div>
 
@@ -50,14 +54,14 @@ export function MiPerfilPage() {
             Subí una foto o escáner de tu firma. Se usará automáticamente al aprobar presupuestos.
           </p>
 
-          {error && <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{error}</div>}
-          {success && <div className="px-4 py-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm flex items-center gap-2"><CheckCircle size={16} />{success}</div>}
+          {error && <div className="alert alert-danger">{error}</div>}
+          {success && <div className="alert alert-success"><CheckCircle size={16} />{success}</div>}
 
           {/* Current firma */}
           {user.firmaUrl && !preview && (
             <div>
               <p className="text-xs font-semibold text-slate-400 mb-2">Firma actual:</p>
-              <div className="border-2 border-green-200 rounded-xl p-4 bg-green-50">
+              <div className="info-panel" style={{ borderColor: 'var(--green-brd)', background: 'linear-gradient(135deg,#dcfce7,#f0fdf4)' }}>
                 <img src={user.firmaUrl} alt="Tu firma" className="max-h-24 object-contain" />
               </div>
             </div>
@@ -67,7 +71,7 @@ export function MiPerfilPage() {
           {preview && (
             <div>
               <p className="text-xs font-semibold text-slate-400 mb-2">Nueva firma{firmaMut.isPending ? ' (subiendo...)' : ' (guardada)'}:</p>
-              <div className="border-2 border-blue-200 rounded-xl p-4 bg-blue-50">
+              <div className="info-panel" style={{ borderColor: 'var(--blue-brd)', background: 'linear-gradient(135deg,#dbeafe,#eff6ff)' }}>
                 <img src={preview} alt="Preview" className="max-h-24 object-contain" />
               </div>
             </div>

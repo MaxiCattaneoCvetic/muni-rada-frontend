@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { configApi, pedidosApi, pagosApi } from '../../api/services';
+import { configApi, pagosApi, pedidosApi } from '../../api/services';
 import { formatMoney, formatDate, stageLabel, stageBadgeClass, stageIcon } from '../../lib/utils';
 import { useNavigate } from 'react-router-dom';
 import { ActionModal } from '../../components/ui/ActionModal';
@@ -24,8 +24,12 @@ export function AdminConfigPage() {
   if (!config) return <div className="p-8 text-center text-slate-400">Cargando...</div>;
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900">Configuración del sistema</h1>
+    <div className="page-shell-form">
+      <div className="page-heading">
+        <div className="page-kicker">Sistema</div>
+        <h1 className="page-title">Configuración del sistema</h1>
+        <p className="page-subtitle">Ajustá el comportamiento del flujo y los datos institucionales.</p>
+      </div>
 
       <div className="card p-6 space-y-5">
         <h2 className="font-bold text-slate-700 text-sm uppercase tracking-wide">⚙️ Parámetros del flujo</h2>
@@ -51,16 +55,14 @@ export function AdminConfigPage() {
         <div className="flex items-center gap-3">
           <div
             onClick={() => setForm((f: any) => ({ ...(f || config), bloquearPagoSinSellado: !cfg?.bloquearPagoSinSellado }))}
-            className={`w-10 h-6 rounded-full relative cursor-pointer transition-colors ${cfg?.bloquearPagoSinSellado ? 'bg-blue-500' : 'bg-slate-200'}`}
-          >
-            <div className={`absolute top-1 w-4 h-4 rounded-full bg-white shadow transition-transform ${cfg?.bloquearPagoSinSellado ? 'translate-x-5' : 'translate-x-1'}`} />
-          </div>
+            className={`toggle-pill ${cfg?.bloquearPagoSinSellado ? 'on' : ''}`}
+          />
           <div>
             <div className="text-sm font-semibold">Bloquear pago si sellado está pendiente</div>
             <div className="text-xs text-slate-400">Impide registrar pago hasta completar el sellado.</div>
           </div>
         </div>
-        {saved && <div className="px-4 py-3 bg-green-50 border border-green-200 rounded-xl text-green-700 text-sm">✅ Configuración guardada</div>}
+        {saved && <div className="alert alert-success">✅ Configuración guardada</div>}
         <button onClick={() => mut.mutate()} disabled={!form || mut.isPending} className="btn btn-primary">
           {mut.isPending ? 'Guardando...' : 'Guardar cambios'}
         </button>
@@ -95,8 +97,11 @@ export function HistorialPage() {
   });
 
   return (
-    <div className="space-y-4">
-      <h1 className="text-2xl font-bold text-slate-900">Historial de pedidos</h1>
+    <div className="page-shell space-y-4">
+      <div className="page-heading">
+        <div className="page-kicker">Consulta</div>
+        <h1 className="page-title">Historial de pedidos</h1>
+      </div>
       <div className="flex gap-3 flex-wrap">
         <input value={search} onChange={e => setSearch(e.target.value)} className="input flex-1 min-w-48" placeholder="🔍 Buscar por descripción, área o N°..." />
         <select value={stageFilter} onChange={e => setStageFilter(e.target.value)} className="input w-auto">
@@ -107,14 +112,14 @@ export function HistorialPage() {
       <div className="card overflow-hidden">
         {isLoading ? <div className="p-8 text-center text-slate-400">Cargando...</div> : (
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-100">
+            <thead>
               <tr>
                 {['N°', 'Descripción', 'Área', 'Estado', 'Monto', 'Fecha'].map(h => (
                   <th key={h} className="px-4 py-3 text-left font-semibold text-slate-500 text-xs uppercase tracking-wide">{h}</th>
                 ))}
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody>
               {filtered.map(p => (
                 <tr key={p.id} onClick={() => navigate(`/pedidos/${p.id}`)} className="hover:bg-slate-50 cursor-pointer transition-colors">
                   <td className="px-4 py-3 font-mono text-xs text-slate-400">{p.numero}</td>
@@ -144,17 +149,20 @@ export function TesoreriaPage() {
   const libres = pendientes.filter(p => !p.bloqueado);
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900">Pagos y sellados</h1>
+    <div className="page-shell space-y-6">
+      <div className="page-heading">
+        <div className="page-kicker">Tesorería</div>
+        <h1 className="page-title">Pagos y sellados</h1>
+      </div>
 
       <div className="grid grid-cols-3 gap-4">
-        <div className="card p-4 text-center border-t-4 border-t-red-400"><div className="text-3xl font-black text-red-600">{bloqueados.length}</div><div className="text-xs font-semibold text-slate-500 uppercase mt-1">Bloqueados</div></div>
-        <div className="card p-4 text-center border-t-4 border-t-blue-400"><div className="text-3xl font-black text-blue-600">{libres.length}</div><div className="text-xs font-semibold text-slate-500 uppercase mt-1">Listos para pagar</div></div>
-        <div className="card p-4 text-center border-t-4 border-t-green-400"><div className="text-3xl font-black text-green-600">{pedidos.filter(p => p.stage >= 5).length}</div><div className="text-xs font-semibold text-slate-500 uppercase mt-1">Procesados</div></div>
+        <div className="stat-card text-center"><div className="stat-number text-red-600">{bloqueados.length}</div><div className="stat-label">Bloqueados</div></div>
+        <div className="stat-card text-center"><div className="stat-number text-blue-600">{libres.length}</div><div className="stat-label">Listos para pagar</div></div>
+        <div className="stat-card text-center"><div className="stat-number text-green-600">{pedidos.filter(p => p.stage >= 5).length}</div><div className="stat-label">Procesados</div></div>
       </div>
 
       {bloqueados.length > 0 && (
-        <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm font-medium">
+        <div className="alert alert-danger">
           🔒 {bloqueados.length} pedido{bloqueados.length !== 1 ? 's' : ''} bloqueado{bloqueados.length !== 1 ? 's' : ''} — registrá el sellado provincial para habilitar el pago.
         </div>
       )}
@@ -184,8 +192,8 @@ export function TesoreriaPage() {
         ))}
         {pendientes.length === 0 && (
           <div className="card p-12 text-center text-slate-400">
-            <div className="text-4xl mb-3">✅</div>
-            <div className="font-semibold">Sin pedidos pendientes de pago</div>
+            <div className="empty-icon">✅</div>
+            <div className="empty-title">Sin pedidos pendientes de pago</div>
           </div>
         )}
       </div>
@@ -197,6 +205,59 @@ export function TesoreriaPage() {
           onClose={() => setModal(null)}
           onSuccess={() => { setModal(null); qc.invalidateQueries({ queryKey: ['pedidos'] }); }}
         />
+      )}
+    </div>
+  );
+}
+
+export function FacturasPage() {
+  const { data: pagos = [], isLoading } = useQuery({ queryKey: ['pagos'], queryFn: () => pagosApi.getAll() });
+
+  return (
+    <div className="page-shell space-y-6">
+      <div className="page-heading">
+        <div className="page-kicker">Tesorería</div>
+        <h1 className="page-title">Facturas por vencer</h1>
+        <p className="page-subtitle">Seguimiento de comprobantes y facturas vinculadas a pagos registrados.</p>
+      </div>
+
+      {isLoading ? (
+        <div className="card p-8 text-center text-slate-400">Cargando facturas...</div>
+      ) : pagos.length === 0 ? (
+        <div className="card empty-state">
+          <div className="empty-icon">🧾</div>
+          <div className="empty-title">Sin facturas registradas</div>
+          <div className="empty-copy">Aparecerán acá a medida que Tesorería cargue pagos con factura.</div>
+        </div>
+      ) : (
+        <div className="card overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr>
+                {['Pedido', 'Transferencia', 'Fecha', 'Monto', 'Factura'].map((h) => (
+                  <th key={h}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {pagos.map((pago) => (
+                <tr key={pago.id}>
+                  <td className="font-mono text-xs text-slate-400">{pago.pedidoId}</td>
+                  <td className="font-semibold">{pago.numeroTransferencia}</td>
+                  <td className="text-slate-500">{formatDate(pago.fechaPago)}</td>
+                  <td className="font-mono">{formatMoney(pago.montoPagado)}</td>
+                  <td>
+                    {pago.facturaUrl ? (
+                      <a href={pago.facturaUrl} target="_blank" rel="noreferrer" className="doc-link">📄 Ver factura</a>
+                    ) : (
+                      <span className="badge badge-amber">Pendiente</span>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
@@ -215,12 +276,15 @@ export function AdminPedidosPage() {
   const byStage = [1,2,3,4,5,6].map(s => ({ stage: s, count: pedidos.filter(p => p.stage === s).length }));
 
   return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold text-slate-900">Todos los pedidos</h1>
+    <div className="page-shell space-y-6">
+      <div className="page-heading">
+        <div className="page-kicker">Administración</div>
+        <h1 className="page-title">Todos los pedidos</h1>
+      </div>
 
       <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
         {byStage.map(({ stage, count }) => (
-          <div key={stage} className="card p-3 text-center">
+          <div key={stage} className="stat-card p-3 text-center">
             <div className="text-xl font-black">{count}</div>
             <div className="text-xs text-slate-400 font-medium mt-0.5 leading-tight" style={{ fontSize: '9px' }}>{stageIcon(stage)} {stageLabel(stage)}</div>
           </div>
@@ -232,10 +296,10 @@ export function AdminPedidosPage() {
       <div className="card overflow-hidden">
         {isLoading ? <div className="p-8 text-center text-slate-400">Cargando...</div> : (
           <table className="w-full text-sm">
-            <thead className="bg-slate-50 border-b border-slate-100">
+            <thead>
               <tr>{['N°','Descripción','Área','Responsable','Estado','Monto'].map(h => <th key={h} className="px-4 py-3 text-left font-semibold text-slate-500 text-xs uppercase">{h}</th>)}</tr>
             </thead>
-            <tbody className="divide-y divide-slate-50">
+            <tbody>
               {filtered.map(p => (
                 <tr key={p.id} onClick={() => navigate(`/pedidos/${p.id}`)} className="hover:bg-slate-50 cursor-pointer">
                   <td className="px-4 py-3 font-mono text-xs text-slate-400">{p.numero}</td>

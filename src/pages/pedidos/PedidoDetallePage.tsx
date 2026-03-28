@@ -1,20 +1,33 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { pedidosApi, presupuestosApi, selladosApi, pagosApi } from '../../api/services';
 import { useAuthStore } from '../../store/auth.store';
-import { formatMoney, formatDate, formatDateTime, stageLabel, stageBadgeClass, stageIcon } from '../../lib/utils';
+import { formatMoney, formatDate, formatDateTime, stageLabel, stageBadgeClass, stageIcon, rolLabel } from '../../lib/utils';
 import { ActionModal } from '../../components/ui/ActionModal';
-import { ArrowLeft, Clock, CheckCircle, XCircle, Lock } from 'lucide-react';
-import { PedidoStage } from '../../types';
+import { ArrowLeft, Clock, CheckCircle, Lock } from 'lucide-react';
+import { PedidoStage, STAGE_OWNER_LABELS } from '../../types';
 
 export function PedidoDetallePage() {
+  type CommentItem = {
+    id: string;
+    title?: string;
+    actor: string;
+    area: string;
+    detail: string;
+    createdAt: string;
+    kind: 'system' | 'chat';
+  };
+
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const qc = useQueryClient();
   const { user } = useAuthStore();
   const [modal, setModal] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'flujo' | 'presupuestos' | 'documentos'>('flujo');
+  const [activeTab, setActiveTab] = useState<'flujo' | 'presupuestos' | 'comentarios' | 'documentos' | 'info'>('flujo');
+  const [chatInput, setChatInput] = useState('');
+  const [chatMessages, setChatMessages] = useState<CommentItem[]>([]);
+  const [chatLoaded, setChatLoaded] = useState(false);
 
   const { data: pedido, isLoading } = useQuery({
     queryKey: ['pedido', id],
@@ -44,6 +57,39 @@ export function PedidoDetallePage() {
     qc.invalidateQueries({ queryKey: ['pago', id] });
   };
 
+  const fullName = (person?: { nombreCompleto?: string; nombre?: string; apellido?: string }) =>
+    person?.nombreCompleto || [person?.nombre, person?.apellido].filter(Boolean).join(' ') || '—';
+
+  const storageKey = id ? `pedido-chat:${id}` : null;
+
+  useEffect(() => {
+    if (!storageKey) {
+      setChatMessages([]);
+      setChatLoaded(false);
+      return;
+    }
+
+    const stored = localStorage.getItem(storageKey);
+    if (!stored) {
+      setChatMessages([]);
+      setChatLoaded(true);
+      return;
+    }
+
+    try {
+      const parsed = JSON.parse(stored) as CommentItem[];
+      setChatMessages(Array.isArray(parsed) ? parsed : []);
+    } catch {
+      setChatMessages([]);
+    }
+    setChatLoaded(true);
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (!chatLoaded || !storageKey) return;
+    localStorage.setItem(storageKey, JSON.stringify(chatMessages));
+  }, [chatLoaded, chatMessages, storageKey]);
+
   if (isLoading) return <div className="p-8 text-center text-slate-400">Cargando expediente...</div>;
   if (!pedido) return <div className="p-8 text-center text-red-500">Pedido no encontrado</div>;
 
@@ -57,14 +103,286 @@ export function PedidoDetallePage() {
     7: 'border-red-400 bg-red-50',
   };
 
+  const presupuestoCountLabel = `${presupuestos.length} presupuesto${presupuestos.length !== 1 ? 's' : ''} cargado${presupuestos.length !== 1 ? 's' : ''}`;
+  const isRejected = pedido.stage === PedidoStage.RECHAZADO;
+  const currentAreaLabel = user?.rol ? rolLabel(user.rol) : 'Sin área';
+
+  const getCurrentStepMessage = (stage: number) => {
+    switch (stage) {
+      case PedidoStage.APROBACION:
+        return 'El pedido está aquí. Secretaría lo tiene pendiente de aprobación.';
+      case PedidoStage.PRESUPUESTOS:
+        return presupuestos.length > 0
+          ? `El pedido está aquí. Compras lo tiene revisando ${presupuestoCountLabel} para elegir una opción.`
+          : 'El pedido está aquí. Compras lo tiene pendiente de cargar presupuestos.';
+      case PedidoStage.FIRMA:
+        return 'El pedido está aquí. Secretaría lo tiene pendiente de firmar el presupuesto elegido.';
+      case PedidoStage.GESTION_PAGOS:
+        if (pedido.bloqueado && !sellado) return 'El pedido está aquí. Tesorería lo tiene pendiente de registrar el sellado.';
+        if (!pedido.bloqueado && !pago) return 'El pedido está aquí. Tesorería lo tiene pendiente de registrar el pago.';
+        if (pago) return 'El pedido está aquí. Tesorería ya registró el pago y está listo para avanzar.';
+        return 'El pedido está aquí. Tesorería lo está gestionando.';
+      case PedidoStage.ESPERANDO_SUMINISTROS:
+        return 'El pedido está aquí. Administración / Suministros lo tiene esperando la entrega o recepción.';
+      case PedidoStage.SUMINISTROS_LISTOS:
+        return 'El pedido está aquí. Administración ya confirmó la recepción y el circuito quedó cerrado.';
+      case PedidoStage.RECHAZADO:
+        return 'El pedido quedó rechazado y frenado hasta que se revise el motivo.';
+      default:
+        return null;
+    }
+  };
+
+  const getCompletedStepMessage = (stage: number) => {
+    switch (stage) {
+      case PedidoStage.APROBACION:
+        return pedido.aprobadoPor
+          ? `Aprobado por ${fullName(pedido.aprobadoPor)}.`
+          : 'La aprobación inicial quedó registrada.';
+      case PedidoStage.PRESUPUESTOS:
+        if (pedido.proveedorSeleccionado) return `Se evaluaron presupuestos y se eligió a ${pedido.proveedorSeleccionado}.`;
+        if (presupuestos.length > 0) return `Compras cargó ${presupuestoCountLabel}.`;
+        return 'Compras trabajó esta etapa.';
+      case PedidoStage.FIRMA:
+        return pedido.firmadoPor
+          ? `Firmado por ${fullName(pedido.firmadoPor)}.`
+          : 'La firma del presupuesto quedó registrada.';
+      case PedidoStage.GESTION_PAGOS:
+        if (sellado && pago) return `Tesorería registró el sellado ${sellado.numeroSellado} y el pago ${pago.numeroTransferencia}.`;
+        if (sellado) return `Tesorería registró el sellado ${sellado.numeroSellado}.`;
+        if (pago) return `Tesorería registró el pago ${pago.numeroTransferencia}.`;
+        return 'Tesorería completó la gestión administrativa.';
+      case PedidoStage.ESPERANDO_SUMINISTROS:
+        return 'El pedido quedó en espera de entrega / recepción.';
+      case PedidoStage.SUMINISTROS_LISTOS:
+        return pedido.recepcionConfirmadaPor
+          ? `Recepción confirmada por ${fullName(pedido.recepcionConfirmadaPor)}.`
+          : 'La recepción quedó confirmada.';
+      default:
+        return null;
+    }
+  };
+
+  const getHistoricalDetail = (stage: number) => {
+    switch (stage) {
+      case PedidoStage.APROBACION:
+        return pedido.notaAprobacion || null;
+      case PedidoStage.PRESUPUESTOS:
+        return presupuestoCountLabel;
+      case PedidoStage.FIRMA:
+        return pedido.firmadoPor ? `Firmó: ${fullName(pedido.firmadoPor)}` : null;
+      case PedidoStage.GESTION_PAGOS:
+        if (sellado && pago) return `Sellado ${sellado.numeroSellado} · Pago ${pago.numeroTransferencia}`;
+        if (sellado) return `Sellado: ${sellado.numeroSellado}`;
+        if (pago) return `Pago: ${pago.numeroTransferencia}`;
+        return null;
+      case PedidoStage.SUMINISTROS_LISTOS:
+        return pedido.recepcionConfirmadaPor ? `Confirmó: ${fullName(pedido.recepcionConfirmadaPor)}` : null;
+      case PedidoStage.RECHAZADO:
+        return pedido.notaRechazo || null;
+      default:
+        return null;
+    }
+  };
+
+  const isStepCompleted = (stage: number) => {
+    if (!isRejected) return pedido.stage > stage;
+    switch (stage) {
+      case PedidoStage.APROBACION:
+        return Boolean(pedido.aprobadoPor);
+      case PedidoStage.PRESUPUESTOS:
+        return presupuestos.length > 0;
+      case PedidoStage.FIRMA:
+        return Boolean(pedido.firmadoPor);
+      case PedidoStage.GESTION_PAGOS:
+        return Boolean(sellado || pago);
+      case PedidoStage.ESPERANDO_SUMINISTROS:
+        return Boolean(pedido.recepcionConfirmadaPor);
+      case PedidoStage.SUMINISTROS_LISTOS:
+        return false;
+      default:
+        return false;
+    }
+  };
+
   const FLOW_STEPS = [
-    { stage: 1, label: 'Aprobación de suministros', quien: pedido.aprobadoPor?.nombreCompleto, ts: pedido.notaAprobacion, icon: '⏳' },
-    { stage: 2, label: 'Búsqueda de presupuestos', quien: `${presupuestos.length} presupuesto${presupuestos.length !== 1 ? 's' : ''} cargado${presupuestos.length !== 1 ? 's' : ''}`, ts: null, icon: '🔍' },
-    { stage: 3, label: 'Firma de presupuestos', quien: pedido.firmadoPor?.nombreCompleto, ts: formatDateTime(pedido.firmadoEn), icon: '✍️' },
-    { stage: 4, label: 'Gestión de sellos y pagos', quien: sellado ? `Sellado: ${sellado.numeroSellado}` : pago ? 'Sin sellado' : null, ts: null, icon: '🏛️' },
-    { stage: 5, label: 'Esperando suministros', quien: null, ts: null, icon: '📦' },
-    { stage: 6, label: 'Suministros listos', quien: pedido.recepcionConfirmadaPor?.nombreCompleto, ts: formatDateTime(pedido.recepcionEn), icon: '✅' },
+    {
+      stage: PedidoStage.APROBACION,
+      label: 'Aprobación de suministros',
+      icon: '⏳',
+      owner: STAGE_OWNER_LABELS[PedidoStage.APROBACION],
+      detail: getHistoricalDetail(PedidoStage.APROBACION),
+      meta: null,
+    },
+    {
+      stage: PedidoStage.PRESUPUESTOS,
+      label: 'Búsqueda de presupuestos',
+      icon: '🔍',
+      owner: STAGE_OWNER_LABELS[PedidoStage.PRESUPUESTOS],
+      detail: getHistoricalDetail(PedidoStage.PRESUPUESTOS),
+      meta: null,
+    },
+    {
+      stage: PedidoStage.FIRMA,
+      label: 'Firma de presupuestos',
+      icon: '✍️',
+      owner: STAGE_OWNER_LABELS[PedidoStage.FIRMA],
+      detail: getHistoricalDetail(PedidoStage.FIRMA),
+      meta: formatDateTime(pedido.firmadoEn),
+    },
+    {
+      stage: PedidoStage.GESTION_PAGOS,
+      label: 'Gestión de sellos y pagos',
+      icon: '🏛️',
+      owner: STAGE_OWNER_LABELS[PedidoStage.GESTION_PAGOS],
+      detail: getHistoricalDetail(PedidoStage.GESTION_PAGOS),
+      meta: null,
+    },
+    {
+      stage: PedidoStage.ESPERANDO_SUMINISTROS,
+      label: 'Esperando suministros',
+      icon: '📦',
+      owner: STAGE_OWNER_LABELS[PedidoStage.ESPERANDO_SUMINISTROS],
+      detail: null,
+      meta: null,
+    },
+    {
+      stage: PedidoStage.SUMINISTROS_LISTOS,
+      label: 'Suministros listos',
+      icon: '✅',
+      owner: STAGE_OWNER_LABELS[PedidoStage.SUMINISTROS_LISTOS],
+      detail: getHistoricalDetail(PedidoStage.SUMINISTROS_LISTOS),
+      meta: formatDateTime(pedido.recepcionEn),
+    },
+    ...(isRejected ? [{
+      stage: PedidoStage.RECHAZADO,
+      label: 'Rechazado',
+      icon: '❌',
+      owner: STAGE_OWNER_LABELS[PedidoStage.RECHAZADO],
+      detail: getHistoricalDetail(PedidoStage.RECHAZADO) || 'Sin motivo registrado.',
+      meta: null,
+    }] : []),
   ];
+
+  const historyComments: CommentItem[] = [
+    {
+      id: 'creacion',
+      title: 'Pedido creado',
+      actor: fullName(pedido.creadoPor),
+      area: pedido.area,
+      detail: pedido.detalle || 'Se registró el pedido en el sistema.',
+      createdAt: pedido.createdAt,
+      kind: 'system',
+    },
+  ];
+
+  if (pedido.aprobadoPor || pedido.notaAprobacion) {
+    historyComments.push({
+      id: 'aprobacion',
+      title: 'Aprobación de suministros',
+      actor: fullName(pedido.aprobadoPor),
+      area: STAGE_OWNER_LABELS[PedidoStage.APROBACION],
+      detail: pedido.notaAprobacion || 'La aprobación quedó registrada.',
+      createdAt: pedido.updatedAt,
+      kind: 'system',
+    });
+  }
+
+  if (presupuestos.length > 0) {
+    historyComments.push({
+      id: 'presupuestos',
+      title: 'Presupuestos cargados',
+      actor: fullName(presupuestos[0]?.cargadoPor),
+      area: STAGE_OWNER_LABELS[PedidoStage.PRESUPUESTOS],
+      detail: pedido.proveedorSeleccionado
+        ? `Se cargaron ${presupuestoCountLabel} y se seleccionó a ${pedido.proveedorSeleccionado}.`
+        : `Se cargaron ${presupuestoCountLabel}.`,
+      createdAt: presupuestos[presupuestos.length - 1]?.createdAt || pedido.updatedAt,
+      kind: 'system',
+    });
+  }
+
+  if (pedido.firmadoPor) {
+    historyComments.push({
+      id: 'firma',
+      title: 'Presupuesto firmado',
+      actor: fullName(pedido.firmadoPor),
+      area: STAGE_OWNER_LABELS[PedidoStage.FIRMA],
+      detail: 'La firma del presupuesto quedó registrada en el sistema.',
+      createdAt: pedido.firmadoEn || pedido.updatedAt,
+      kind: 'system',
+    });
+  }
+
+  if (sellado) {
+    historyComments.push({
+      id: 'sellado',
+      title: 'Sellado registrado',
+      actor: fullName(sellado.registradoPor),
+      area: STAGE_OWNER_LABELS[PedidoStage.GESTION_PAGOS],
+      detail: `Sellado N° ${sellado.numeroSellado}.`,
+      createdAt: sellado.createdAt,
+      kind: 'system',
+    });
+  }
+
+  if (pago) {
+    historyComments.push({
+      id: 'pago',
+      title: 'Pago registrado',
+      actor: fullName(pago.registradoPor),
+      area: STAGE_OWNER_LABELS[PedidoStage.GESTION_PAGOS],
+      detail: `Pago N° ${pago.numeroTransferencia}.`,
+      createdAt: pago.createdAt,
+      kind: 'system',
+    });
+  }
+
+  if (pedido.recepcionConfirmadaPor) {
+    historyComments.push({
+      id: 'recepcion',
+      title: 'Recepción confirmada',
+      actor: fullName(pedido.recepcionConfirmadaPor),
+      area: STAGE_OWNER_LABELS[PedidoStage.SUMINISTROS_LISTOS],
+      detail: 'La recepción del pedido quedó confirmada.',
+      createdAt: pedido.recepcionEn || pedido.updatedAt,
+      kind: 'system',
+    });
+  }
+
+  if (pedido.notaRechazo) {
+    historyComments.push({
+      id: 'rechazo',
+      title: 'Pedido rechazado',
+      actor: STAGE_OWNER_LABELS[PedidoStage.RECHAZADO],
+      area: STAGE_OWNER_LABELS[PedidoStage.RECHAZADO],
+      detail: pedido.notaRechazo,
+      createdAt: pedido.updatedAt,
+      kind: 'system',
+    });
+  }
+
+  const comments = [...historyComments, ...chatMessages].sort(
+    (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+  );
+
+  const handleSendMessage = () => {
+    const detail = chatInput.trim();
+    if (!detail || !user) return;
+
+    setChatMessages(current => [
+      ...current,
+      {
+        id: crypto.randomUUID(),
+        actor: fullName(user),
+        area: currentAreaLabel,
+        detail,
+        createdAt: new Date().toISOString(),
+        kind: 'chat',
+      },
+    ]);
+    setChatInput('');
+  };
 
   const canAprobar = (user?.rol === 'secretaria' || user?.rol === 'admin') && pedido.stage === PedidoStage.APROBACION;
   const canRechazar = (user?.rol === 'secretaria' || user?.rol === 'admin') && (pedido.stage === PedidoStage.APROBACION || pedido.stage === PedidoStage.FIRMA);
@@ -74,9 +392,9 @@ export function PedidoDetallePage() {
   const canRecepcion = user?.rol === 'admin' && pedido.stage === PedidoStage.ESPERANDO_SUMINISTROS;
 
   return (
-    <div className="max-w-3xl mx-auto space-y-5">
+    <div className="page-shell-narrow">
       {/* Back */}
-      <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-slate-500 hover:text-slate-800 text-sm font-medium transition-colors">
+      <button onClick={() => navigate(-1)} className="back-link">
         <ArrowLeft size={16} /> Volver
       </button>
 
@@ -118,14 +436,22 @@ export function PedidoDetallePage() {
       </div>
 
       {/* Tabs */}
-      <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
-        {(['flujo', 'presupuestos', 'documentos'] as const).map(tab => (
+      <div className="segmented-tabs">
+        {(['flujo', 'presupuestos', 'comentarios', 'documentos', 'info'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
-            className={`px-4 py-2 rounded-lg text-sm font-semibold transition-all capitalize ${activeTab === tab ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`segmented-tab capitalize ${activeTab === tab ? 'active' : ''}`}
           >
-            {tab === 'flujo' ? '📋 Flujo' : tab === 'presupuestos' ? `💰 Presupuestos (${presupuestos.length})` : '📎 Documentos'}
+            {tab === 'flujo'
+              ? '📋 Flujo'
+              : tab === 'presupuestos'
+                ? `💰 Presupuestos (${presupuestos.length})`
+              : tab === 'comentarios'
+                ? `💬 Comentarios (${comments.length})`
+                : tab === 'documentos'
+                  ? '📎 Documentos'
+                  : 'ℹ️ Info'}
           </button>
         ))}
       </div>
@@ -135,9 +461,10 @@ export function PedidoDetallePage() {
         <div className="card p-6">
           <div className="space-y-0">
             {FLOW_STEPS.map((step, i) => {
-              const done = pedido.stage > step.stage;
+              const done = isStepCompleted(step.stage);
               const current = pedido.stage === step.stage;
-              const rejected = pedido.stage === PedidoStage.RECHAZADO;
+              const pending = !done && !current;
+              const summary = current ? getCurrentStepMessage(step.stage) : done ? getCompletedStepMessage(step.stage) : null;
               return (
                 <div key={step.stage} className="flex gap-4">
                   <div className="flex flex-col items-center">
@@ -156,22 +483,70 @@ export function PedidoDetallePage() {
                     <div className={`font-semibold text-sm ${done ? 'text-slate-700' : current ? 'text-blue-700' : 'text-slate-400'}`}>
                       {step.icon} {step.label}
                     </div>
-                    {step.quien && <div className="text-xs text-slate-500 mt-0.5">{step.quien}</div>}
-                    {step.ts && <div className="text-xs text-slate-400 mt-0.5 font-mono">{step.ts}</div>}
-                    {current && pedido.notaRechazo && <div className="text-xs text-red-600 mt-1 font-medium">Motivo: {pedido.notaRechazo}</div>}
+                    {!pending && summary && (
+                      <div className={`mt-2 rounded-xl border px-3 py-2 text-xs ${
+                        current
+                          ? 'border-blue-200 bg-blue-50 text-blue-900'
+                          : 'border-green-100 bg-green-50 text-slate-700'
+                      }`}>
+                        {summary}
+                      </div>
+                    )}
+                    {!pending && step.detail && <div className="text-xs text-slate-500 mt-2">{step.detail}</div>}
+                    {!pending && step.meta && step.meta !== '—' && <div className="text-xs text-slate-400 mt-0.5">{step.meta}</div>}
                   </div>
                 </div>
               );
             })}
           </div>
+        </div>
+      )}
 
-          {/* Info grid */}
-          <div className="mt-6 pt-5 border-t border-slate-100 grid grid-cols-2 gap-3 text-sm">
-            <div><span className="text-slate-400 text-xs font-bold uppercase">Solicitado por</span><div className="font-semibold mt-0.5">{pedido.creadoPor?.nombreCompleto || '—'}</div></div>
-            <div><span className="text-slate-400 text-xs font-bold uppercase">Fecha creación</span><div className="font-semibold mt-0.5">{formatDate(pedido.createdAt)}</div></div>
-            {pedido.aprobadoPor && <div><span className="text-slate-400 text-xs font-bold uppercase">Aprobado por</span><div className="font-semibold mt-0.5">{pedido.aprobadoPor.nombreCompleto}</div></div>}
-            {pedido.firmadoPor && <div><span className="text-slate-400 text-xs font-bold uppercase">Firmado por</span><div className="font-semibold mt-0.5">{pedido.firmadoPor.nombreCompleto}</div></div>}
-            {pedido.firmaHash && <div className="col-span-2"><span className="text-slate-400 text-xs font-bold uppercase">Hash firma</span><div className="font-mono text-xs text-slate-600 mt-0.5">{pedido.firmaHash}</div></div>}
+      {/* Tab: Comentarios */}
+      {activeTab === 'comentarios' && (
+        <div className="card p-6 space-y-3">
+          {comments.length === 0 ? (
+            <div className="empty-state py-6">
+              <div className="empty-title">Sin comentarios todavía</div>
+              <div className="text-sm text-slate-400 mt-1">Cuando el pedido avance, acá va a quedar el registro de cada paso.</div>
+            </div>
+          ) : comments.map(comment => (
+            <div key={comment.id} className={`rounded-2xl border px-4 py-3 ${comment.kind === 'chat' ? 'border-blue-200 bg-blue-50' : 'border-slate-200 bg-slate-50'}`}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="font-semibold text-sm text-slate-900">
+                    {comment.title || 'Comentario'}
+                  </div>
+                  <div className="text-xs text-slate-500 mt-0.5">{comment.actor} · {comment.area}</div>
+                </div>
+                <div className="text-xs text-slate-400 whitespace-nowrap">{formatDateTime(comment.createdAt)}</div>
+              </div>
+              <div className="text-sm text-slate-600 mt-2">{comment.detail}</div>
+            </div>
+          ))}
+          <div className="rounded-2xl border border-slate-200 bg-white p-4">
+            <div className="text-xs text-slate-500 mb-2">Escribiendo como {fullName(user || undefined)} · {currentAreaLabel}</div>
+            <div className="flex gap-3 items-end">
+              <textarea
+                value={chatInput}
+                onChange={e => setChatInput(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSendMessage();
+                  }
+                }}
+                placeholder="Escribí un comentario sobre este pedido..."
+                className="flex-1 min-h-24 rounded-xl border border-slate-200 px-3 py-2 text-sm text-slate-700 outline-none focus:border-blue-300"
+              />
+              <button
+                onClick={handleSendMessage}
+                disabled={!chatInput.trim() || !user}
+                className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Enviar
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -197,7 +572,7 @@ export function PedidoDetallePage() {
                 </div>
               </div>
               {p.notas && <div className="mt-2 text-sm text-slate-600 bg-slate-50 rounded-lg p-3">{p.notas}</div>}
-              {p.archivoUrl && <a href={p.archivoUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs text-blue-600 font-semibold hover:underline">📄 Ver PDF del presupuesto →</a>}
+              {p.archivoUrl && <a href={p.archivoUrl} target="_blank" rel="noreferrer" className="mt-2 doc-link">📄 Ver PDF del presupuesto →</a>}
               {pedido.proveedorSeleccionado === p.proveedor && (
                 <div className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-green-700 bg-green-100 px-2 py-1 rounded-full">✅ Seleccionado</div>
               )}
@@ -211,39 +586,61 @@ export function PedidoDetallePage() {
         <div className="card p-6 space-y-4">
           {/* Firma */}
           {pedido.firmaUrlUsada && (
-            <div className="border border-slate-200 rounded-xl p-4">
-              <div className="text-xs font-bold text-slate-400 uppercase mb-2">Firma digital</div>
+            <div className="info-panel">
+              <div className="info-pair-label mb-2">Firma digital</div>
               <img src={pedido.firmaUrlUsada} alt="Firma" className="max-h-20 object-contain bg-white border border-slate-100 rounded p-2" />
               <div className="text-xs text-slate-400 mt-1 font-mono">{pedido.firmaHash}</div>
             </div>
           )}
           {/* Sellado */}
           {sellado && (
-            <div className="border border-slate-200 rounded-xl p-4">
-              <div className="text-xs font-bold text-slate-400 uppercase mb-2">Sellado provincial</div>
+            <div className="info-panel">
+              <div className="info-pair-label mb-2">Sellado provincial</div>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div><span className="text-slate-400">N°</span> <span className="font-mono font-bold">{sellado.numeroSellado}</span></div>
                 <div><span className="text-slate-400">Fecha</span> <span className="font-semibold">{formatDate(sellado.fechaSellado)}</span></div>
                 <div><span className="text-slate-400">Monto</span> <span className="font-mono font-bold">{formatMoney(sellado.montoSellado)}</span></div>
               </div>
-              {sellado.comprobanteUrl && <a href={sellado.comprobanteUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs text-blue-600 font-semibold hover:underline">📄 Comprobante →</a>}
+              {sellado.comprobanteUrl && <a href={sellado.comprobanteUrl} target="_blank" rel="noreferrer" className="mt-2 doc-link">📄 Comprobante →</a>}
             </div>
           )}
           {/* Pago */}
           {pago && (
-            <div className="border border-green-200 rounded-xl p-4 bg-green-50">
+            <div className="info-panel" style={{ borderColor: 'var(--green-brd)', background: 'linear-gradient(135deg,#dcfce7,#f0fdf4)' }}>
               <div className="text-xs font-bold text-green-600 uppercase mb-2">✅ Pago registrado</div>
               <div className="grid grid-cols-2 gap-2 text-sm">
                 <div><span className="text-slate-400">Transferencia</span> <span className="font-mono font-bold">{pago.numeroTransferencia}</span></div>
                 <div><span className="text-slate-400">Fecha</span> <span className="font-semibold">{formatDate(pago.fechaPago)}</span></div>
                 <div><span className="text-slate-400">Monto</span> <span className="font-mono font-bold">{formatMoney(pago.montoPagado)}</span></div>
               </div>
-              {pago.facturaUrl && <a href={pago.facturaUrl} target="_blank" rel="noreferrer" className="mt-2 inline-flex items-center gap-1 text-xs text-blue-600 font-semibold hover:underline">📄 Factura →</a>}
+              {pago.facturaUrl && <a href={pago.facturaUrl} target="_blank" rel="noreferrer" className="mt-2 doc-link">📄 Factura →</a>}
             </div>
           )}
           {!pedido.firmaUrlUsada && !sellado && !pago && (
-            <div className="text-center text-slate-400 py-6">Sin documentos adjuntos aún</div>
+            <div className="empty-state py-6">
+              <div className="empty-title">Sin documentos adjuntos aún</div>
+            </div>
           )}
+        </div>
+      )}
+
+      {/* Tab: Info */}
+      {activeTab === 'info' && (
+        <div className="card p-6">
+          <div className="grid grid-cols-2 gap-3 text-sm">
+            <div><div className="info-pair-label">N° Pedido</div><div className="info-pair-value font-mono">{pedido.numero}</div></div>
+            <div><div className="info-pair-label">Estado actual</div><div className="info-pair-value">{stageIcon(pedido.stage)} {stageLabel(pedido.stage)}</div></div>
+            <div><div className="info-pair-label">Solicitado por</div><div className="info-pair-value">{fullName(pedido.creadoPor)}</div></div>
+            <div><div className="info-pair-label">Fecha creación</div><div className="info-pair-value">{formatDate(pedido.createdAt)}</div></div>
+            <div><div className="info-pair-label">Área solicitante</div><div className="info-pair-value">{pedido.area}</div></div>
+            <div><div className="info-pair-label">Equipo actual</div><div className="info-pair-value">{STAGE_OWNER_LABELS[pedido.stage] || '—'}</div></div>
+            {pedido.monto != null && <div><div className="info-pair-label">Monto</div><div className="info-pair-value">{formatMoney(pedido.monto)}</div></div>}
+            {pedido.proveedorSeleccionado && <div><div className="info-pair-label">Proveedor seleccionado</div><div className="info-pair-value">{pedido.proveedorSeleccionado}</div></div>}
+            {pedido.aprobadoPor && <div><div className="info-pair-label">Aprobado por</div><div className="info-pair-value">{fullName(pedido.aprobadoPor)}</div></div>}
+            {pedido.firmadoPor && <div><div className="info-pair-label">Firmado por</div><div className="info-pair-value">{fullName(pedido.firmadoPor)}</div></div>}
+            {pedido.detalle && <div className="col-span-2"><div className="info-pair-label">Detalle</div><div className="info-pair-value">{pedido.detalle}</div></div>}
+            {pedido.firmaHash && <div className="col-span-2"><div className="info-pair-label">Hash firma</div><div className="font-mono text-xs text-slate-600 mt-1">{pedido.firmaHash}</div></div>}
+          </div>
         </div>
       )}
 

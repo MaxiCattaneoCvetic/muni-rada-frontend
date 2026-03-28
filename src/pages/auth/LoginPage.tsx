@@ -31,23 +31,84 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-blue-900 p-4">
-      <div className="w-full max-w-sm">
-        {/* Logo */}
+    <div 
+      className="min-h-screen flex items-center justify-center p-6 relative overflow-hidden"
+      style={{
+        background: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 40%, #1e40af 100%)',
+      }}
+    >
+      {/* Background effects */}
+      <div 
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: `
+            radial-gradient(ellipse 60% 50% at 20% 30%, rgba(59,130,246,.2) 0%, transparent 60%),
+            radial-gradient(ellipse 40% 60% at 80% 70%, rgba(139,92,246,.15) 0%, transparent 60%),
+            radial-gradient(ellipse 30% 30% at 60% 10%, rgba(96,165,250,.12) 0%, transparent 50%)
+          `
+        }}
+      />
+      <div 
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.02'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`
+        }}
+      />
+      
+      <div className="w-full max-w-[420px] relative z-10">
+        {/* Header */}
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 bg-white/10 rounded-2xl mb-4 border border-white/20">
-            <span className="text-3xl">🏛️</span>
+          <div 
+            className="inline-flex items-center gap-2 mb-5 px-4 py-1.5 rounded-full backdrop-blur-xl"
+            style={{
+              background: 'rgba(255,255,255,.1)',
+              border: '1px solid rgba(255,255,255,.2)',
+              boxShadow: '0 2px 8px rgba(0,0,0,.2)',
+            }}
+          >
+            <div 
+              className="w-[7px] h-[7px] rounded-full"
+              style={{
+                background: '#4ade80',
+                boxShadow: '0 0 8px rgba(74,222,128,.5)',
+                animation: 'float 2s ease-in-out infinite',
+              }}
+            />
+            <span className="text-xs font-semibold" style={{ color: 'rgba(255,255,255,.85)', letterSpacing: '.3px' }}>
+              Sistema Activo
+            </span>
           </div>
-          <h1 className="text-white text-2xl font-bold tracking-tight">Suministros</h1>
-          <p className="text-white/50 text-sm mt-1">Municipalidad de Rada Tilly</p>
+          
+          <h1 
+            className="text-[30px] font-extrabold text-white mb-1.5"
+            style={{ letterSpacing: '-.8px', lineHeight: '1.15' }}
+          >
+            <span>Suministros</span>
+          </h1>
+          <p className="text-[13px]" style={{ color: 'rgba(255,255,255,.55)', letterSpacing: '.2px' }}>
+            Municipalidad de Rada Tilly
+          </p>
+          <p className="mt-5 text-[13px] text-center" style={{ color: 'rgba(255,255,255,.5)' }}>
+            Accedé con tu cuenta institucional para continuar.
+          </p>
         </div>
 
-        {/* Form */}
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
-          <h2 className="text-slate-800 font-bold text-lg mb-6">Iniciar sesión</h2>
+        {/* Form Card */}
+        <div 
+          className="rounded-2xl p-6 backdrop-blur-xl"
+          style={{
+            background: 'rgba(255,255,255,.95)',
+            border: '1px solid rgba(255,255,255,.5)',
+            boxShadow: '0 8px 32px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.6)',
+          }}
+        >
+          <h2 className="text-lg font-extrabold mb-5" style={{ color: 'var(--text)', letterSpacing: '-.3px' }}>
+            Iniciar sesión
+          </h2>
 
           {error && (
-            <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm font-medium">
+            <div className="alert alert-danger mb-4">
+              <span className="text-base">⚠️</span>
               {error}
             </div>
           )}
@@ -80,13 +141,16 @@ export default function LoginPage() {
             <button
               type="submit"
               disabled={loading}
-              className="btn btn-primary w-full justify-center py-3 text-base mt-2"
+              className="btn btn-primary w-full justify-center py-3 text-sm font-bold mt-2"
             >
               {loading ? 'Ingresando...' : 'Ingresar'}
             </button>
           </form>
 
-          <p className="text-slate-400 text-xs text-center mt-6">
+          <p 
+            className="text-center mt-5"
+            style={{ fontSize: '11px', color: 'var(--text3)' }}
+          >
             ¿Problemas para ingresar? Contactá a Sistemas.
           </p>
         </div>

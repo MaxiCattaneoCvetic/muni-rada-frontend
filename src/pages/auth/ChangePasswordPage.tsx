@@ -30,9 +30,29 @@ export default function ChangePasswordPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800 p-4">
-      <div className="w-full max-w-sm">
-        <div className="bg-white rounded-2xl shadow-2xl p-8">
+    <div
+      className="min-h-screen flex items-center justify-center p-6 relative overflow-hidden"
+      style={{ background: 'linear-gradient(135deg, #0f172a 0%, #1e3a5f 40%, #1e40af 100%)' }}
+    >
+      <div
+        className="absolute inset-0 pointer-events-none"
+        style={{
+          background: `
+            radial-gradient(ellipse 60% 50% at 20% 30%, rgba(59,130,246,.2) 0%, transparent 60%),
+            radial-gradient(ellipse 40% 60% at 80% 70%, rgba(139,92,246,.15) 0%, transparent 60%),
+            radial-gradient(ellipse 30% 30% at 60% 10%, rgba(96,165,250,.12) 0%, transparent 50%)
+          `,
+        }}
+      />
+      <div className="w-full max-w-sm relative z-10">
+        <div
+          className="rounded-2xl p-8"
+          style={{
+            background: 'rgba(255,255,255,.95)',
+            border: '1px solid rgba(255,255,255,.5)',
+            boxShadow: '0 8px 32px rgba(0,0,0,.3), inset 0 1px 0 rgba(255,255,255,.6)',
+          }}
+        >
           <div className="text-center mb-6">
             <div className="text-4xl mb-3">🔐</div>
             <h2 className="text-xl font-bold text-slate-800">Cambiar contraseña</h2>
@@ -43,11 +63,7 @@ export default function ChangePasswordPage() {
             </p>
           </div>
 
-          {error && (
-            <div className="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">
-              {error}
-            </div>
-          )}
+          {error && <div className="alert alert-danger">{error}</div>}
 
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>

@@ -1,11 +1,8 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usersApi } from '../../api/services';
-import type { User } from '../../types';
-import { rolLabel, rolBadgeClass, getInitials, formatDate } from '../../lib/utils';
+import { rolLabel, rolBadgeClass, getInitials } from '../../lib/utils';
 import { UserPlus, RefreshCw, Power, PowerOff } from 'lucide-react';
-import { AREAS } from '../../types';
-
 export function AdminUsuariosPage() {
   const qc = useQueryClient();
   const { data: users = [], isLoading } = useQuery({ queryKey: ['users'], queryFn: usersApi.getAll });
@@ -34,11 +31,12 @@ export function AdminUsuariosPage() {
   const ROLES = ['secretaria', 'compras', 'tesoreria', 'admin'];
 
   return (
-    <div className="space-y-6">
+    <div className="page-shell space-y-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Usuarios</h1>
-          <p className="text-slate-500 text-sm mt-0.5">{users.filter(u => u.isActive).length} usuarios activos</p>
+        <div className="page-heading">
+          <div className="page-kicker">Administración</div>
+          <h1 className="page-title">Usuarios</h1>
+          <p className="page-subtitle">{users.filter(u => u.isActive).length} usuarios activos</p>
         </div>
         <button onClick={() => setShowForm(true)} className="btn btn-primary gap-2">
           <UserPlus size={16} /> Nuevo usuario
@@ -49,7 +47,7 @@ export function AdminUsuariosPage() {
       {showForm && (
         <div className="card p-6 border-2 border-blue-200">
           <h3 className="font-bold mb-4">Crear nuevo usuario</h3>
-          {error && <div className="mb-3 px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{error}</div>}
+          {error && <div className="alert alert-danger">{error}</div>}
           <div className="grid grid-cols-2 gap-4">
             <div><label className="label">Nombre *</label><input value={form.nombre} onChange={e => setForm(f => ({ ...f, nombre: e.target.value }))} className="input" /></div>
             <div><label className="label">Apellido *</label><input value={form.apellido} onChange={e => setForm(f => ({ ...f, apellido: e.target.value }))} className="input" /></div>
@@ -62,7 +60,7 @@ export function AdminUsuariosPage() {
             </div>
             <div><label className="label">Contraseña inicial *</label><input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} className="input" placeholder="Mín. 6 caracteres" /></div>
           </div>
-          <p className="text-xs text-amber-600 mt-3 font-medium">⚠️ El usuario deberá cambiar la contraseña al primer login.</p>
+          <div className="alert alert-warning mt-3 mb-0">⚠️ El usuario deberá cambiar la contraseña al primer login.</div>
           <div className="flex gap-3 mt-4">
             <button onClick={() => setShowForm(false)} className="btn btn-ghost flex-1 justify-center">Cancelar</button>
             <button onClick={() => createMut.mutate()} disabled={createMut.isPending} className="btn btn-primary flex-1 justify-center">
@@ -74,8 +72,8 @@ export function AdminUsuariosPage() {
 
       {/* Reset password modal */}
       {resetId && (
-        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl">
+        <div className="fixed inset-0 z-50 bg-slate-900/60 flex items-center justify-center p-4 backdrop-blur-sm">
+          <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl border border-white/70">
             <h3 className="font-bold text-lg mb-1">Blanquear contraseña</h3>
             <p className="text-sm text-slate-500 mb-4">El usuario deberá cambiarla al próximo login.</p>
             <label className="label">Nueva contraseña temporal</label>

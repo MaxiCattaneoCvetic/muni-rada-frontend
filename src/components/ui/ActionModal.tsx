@@ -68,38 +68,113 @@ export function ActionModal({ pedido, action, onClose, onSuccess }: Props) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] overflow-y-auto">
+    <div 
+      className="fixed inset-0 z-[300] flex items-center justify-center p-5 backdrop-blur-sm"
+      style={{ background: 'rgba(15,23,42,.55)' }}
+      onClick={e => e.target === e.currentTarget && onClose()}
+    >
+      <div 
+        className="w-full max-w-[580px] max-h-[90vh] overflow-y-auto flex flex-col"
+        style={{
+          background: 'var(--white)',
+          borderRadius: '20px',
+          boxShadow: 'var(--shadow-lg)',
+          border: '1px solid rgba(255,255,255,.8)',
+        }}
+      >
         {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-100 flex items-start justify-between sticky top-0 bg-white rounded-t-2xl">
+        <div 
+          className="px-5 py-4 border-b flex items-start justify-between gap-3 flex-shrink-0 sticky top-0 z-10"
+          style={{
+            borderBottom: '1px solid var(--border)',
+            background: 'linear-gradient(135deg, #fff, #fafbfd)',
+          }}
+        >
           <div>
-            <h3 className="font-bold text-slate-800 text-base">{titles[action]}</h3>
-            <p className="text-sm text-slate-500 mt-0.5">{pedido.numero} · {pedido.descripcion}</p>
+            <h3 
+              className="font-extrabold"
+              style={{ fontSize: '15px', color: 'var(--text)', letterSpacing: '-.2px' }}
+            >
+              {titles[action]}
+            </h3>
+            <p 
+              className="mt-0.5"
+              style={{ fontSize: '12px', color: 'var(--text2)' }}
+            >
+              {pedido.numero} · {pedido.descripcion}
+            </p>
           </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-700 p-1"><X size={18} /></button>
+          <button 
+            onClick={onClose} 
+            className="w-[30px] h-[30px] rounded-lg flex items-center justify-center flex-shrink-0 cursor-pointer transition-all"
+            style={{
+              background: 'var(--surface)',
+              border: '1px solid var(--border)',
+              color: 'var(--text2)',
+              fontSize: '14px',
+              boxShadow: 'var(--shadow-xs)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'var(--red-lt)';
+              e.currentTarget.style.color = 'var(--red)';
+              e.currentTarget.style.borderColor = 'var(--red-brd)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'var(--surface)';
+              e.currentTarget.style.color = 'var(--text2)';
+              e.currentTarget.style.borderColor = 'var(--border)';
+            }}
+          >
+            <X size={14} />
+          </button>
         </div>
 
-        <div className="px-6 py-5 space-y-4">
-          {error && <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-xl text-red-700 text-sm">{error}</div>}
+        <div className="px-5 py-4 space-y-3.5 flex-1">
+          {error && <div className="alert alert-danger">{error}</div>}
 
           {/* Pedido info */}
-          <div className="bg-slate-50 rounded-xl p-4 text-sm space-y-1.5">
-            <div className="flex justify-between"><span className="text-slate-500">Área</span><span className="font-semibold">{pedido.area}</span></div>
-            {pedido.monto && <div className="flex justify-between"><span className="text-slate-500">Monto</span><span className="font-bold font-mono">{formatMoney(pedido.monto)}</span></div>}
-            {pedido.proveedorSeleccionado && <div className="flex justify-between"><span className="text-slate-500">Proveedor</span><span className="font-semibold">{pedido.proveedorSeleccionado}</span></div>}
+          <div 
+            className="rounded-[10px] p-3.5 space-y-2"
+            style={{
+              background: 'var(--surface)',
+              border: '1px solid var(--border)',
+              boxShadow: 'var(--shadow-xs)',
+            }}
+          >
+            <div className="flex justify-between">
+              <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>Área</span>
+              <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>{pedido.area}</span>
+            </div>
+            {pedido.monto && (
+              <div className="flex justify-between">
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>Monto</span>
+                <span 
+                  className="font-mono font-extrabold"
+                  style={{ fontSize: '13px', color: 'var(--amber)', letterSpacing: '-.3px' }}
+                >
+                  {formatMoney(pedido.monto)}
+                </span>
+              </div>
+            )}
+            {pedido.proveedorSeleccionado && (
+              <div className="flex justify-between">
+                <span style={{ fontSize: '11px', fontWeight: 700, color: 'var(--text3)', textTransform: 'uppercase', letterSpacing: '.5px' }}>Proveedor</span>
+                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>{pedido.proveedorSeleccionado}</span>
+              </div>
+            )}
           </div>
 
           {/* Firma info */}
           {action === 'firmar' && (
             <>
               {user?.firmaUrl ? (
-                <div className="border-2 border-green-200 rounded-xl p-4 bg-green-50">
-                  <p className="text-sm font-semibold text-green-700 mb-2">✅ Se usará tu firma registrada:</p>
-                  <img src={user.firmaUrl} alt="Tu firma" className="max-h-20 object-contain bg-white rounded-lg p-2 border border-green-100" />
+                <div className="alert alert-success">
+                  <p className="font-semibold" style={{ fontSize: '12px' }}>✅ Se usará tu firma registrada:</p>
+                  <img src={user.firmaUrl} alt="Tu firma" className="max-h-20 object-contain bg-white rounded-lg p-2 mt-2" style={{ border: '1px solid var(--green-brd)' }} />
                 </div>
               ) : (
-                <div className="border-2 border-red-200 rounded-xl p-4 bg-red-50">
-                  <p className="text-sm font-semibold text-red-700">❌ No tenés firma configurada. Andá a Mi Perfil para subir tu firma escaneada antes de firmar.</p>
+                <div className="alert alert-danger">
+                  <p className="font-semibold" style={{ fontSize: '12px' }}>❌ No tenés firma configurada. Andá a Mi Perfil para subir tu firma escaneada antes de firmar.</p>
                 </div>
               )}
             </>
@@ -147,7 +222,13 @@ export function ActionModal({ pedido, action, onClose, onSuccess }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-slate-100 flex gap-3 justify-end sticky bottom-0 bg-white rounded-b-2xl">
+        <div 
+          className="px-5 py-3.5 border-t flex gap-2 justify-end flex-shrink-0 sticky bottom-0"
+          style={{
+            borderTop: '1px solid var(--border)',
+            background: 'var(--white)',
+          }}
+        >
           <button onClick={onClose} className="btn btn-ghost">Cancelar</button>
           <button
             onClick={submit}
