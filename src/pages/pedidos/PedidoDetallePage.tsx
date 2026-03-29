@@ -1,11 +1,16 @@
-import { useEffect, useState } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useEffect, useState, useMemo, useRef } from 'react';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { pedidosApi, presupuestosApi, selladosApi, pagosApi } from '../../api/services';
 import { useAuthStore } from '../../store/auth.store';
-import { formatMoney, formatDate, formatDateTime, stageLabel, stageBadgeClass, stageIcon, rolLabel } from '../../lib/utils';
+import { formatMoney, formatDate, formatDateTime, stageLabel, stageBadgeClass, stageIcon, rolLabel, pedidoEstadoVisibleLabel } from '../../lib/utils';
+import { buildPedidoAuditResumen, buildPedidoAuditTimeline } from '../../lib/pedido-audit';
+import { getCurrentStepMessage } from '../../lib/pedido-flow-messages';
 import { ActionModal } from '../../components/ui/ActionModal';
+import { PresupuestoDetalleModal } from '../../components/presupuestos/PresupuestoDetalleModal';
+import { PedidoPresupuestosComprasPanel } from '../../components/presupuestos/PedidoPresupuestosComprasPanel';
 import { ArrowLeft, Clock, CheckCircle, Lock } from 'lucide-react';
+import type { Presupuesto } from '../../types';
 import { PedidoStage, STAGE_OWNER_LABELS } from '../../types';
 
 export function PedidoDetallePage() {
@@ -24,10 +29,16 @@ export function PedidoDetallePage() {
   const qc = useQueryClient();
   const { user } = useAuthStore();
   const [modal, setModal] = useState<string | null>(null);
-  const [activeTab, setActiveTab] = useState<'flujo' | 'presupuestos' | 'comentarios' | 'documentos' | 'info'>('flujo');
+  const [presupuestoModal, setPresupuestoModal] = useState<Presupuesto | null>(null);
+  const [activeTab, setActiveTab] = useState<
+    'flujo' | 'presupuestos' | 'comentarios' | 'documentos' | 'info' | 'auditoria'
+  >('flujo');
   const [chatInput, setChatInput] = useState('');
   const [chatMessages, setChatMessages] = useState<CommentItem[]>([]);
   const [chatLoaded, setChatLoaded] = useState(false);
+  const [presupuestoParaFirmaId, setPresupuestoParaFirmaId] = useState<string | null>(null);
+  const prevPedidoIdRef = useRef<string | undefined>(undefined);
+  const location = useLocation();
 
   const { data: pedido, isLoading } = useQuery({
     queryKey: ['pedido', id],
@@ -48,6 +59,40 @@ export function PedidoDetallePage() {
     queryFn: () => pagosApi.getByPedido(id!),
     enabled: !!id,
   });
+
+  const presupuestosMenorValorIds = useMemo(() => {
+    if (presupuestos.length === 0) return new Set<string>();
+    const nums = presupuestos.map((p) => Number(p.monto));
+    const min = Math.min(...nums);
+    return new Set(presupuestos.filter((p) => Number(p.monto) === min).map((p) => p.id));
+  }, [presupuestos]);
+
+  useEffect(() => {
+    const st = location.state as { openPresupuestosTab?: boolean } | undefined;
+    if (st?.openPresupuestosTab) setActiveTab('presupuestos');
+  }, [location.state]);
+
+  useEffect(() => {
+    if (!pedido) return;
+    if (pedido.id !== prevPedidoIdRef.current) {
+      prevPedidoIdRef.current = pedido.id;
+      setPresupuestoParaFirmaId(null);
+    }
+  }, [pedido]);
+
+  useEffect(() => {
+    if (!pedido || pedido.stage !== PedidoStage.FIRMA || presupuestos.length === 0) return;
+    setPresupuestoParaFirmaId((prev) => {
+      if (prev != null && presupuestos.some((p) => p.id === prev)) return prev;
+      const match = presupuestos.find(
+        (p) =>
+          pedido.proveedorSeleccionado &&
+          p.proveedor === pedido.proveedorSeleccionado &&
+          Number(p.monto) === Number(pedido.monto ?? NaN),
+      );
+      return match?.id ?? prev;
+    });
+  }, [pedido, presupuestos]);
 
   const refetch = () => {
     qc.invalidateQueries({ queryKey: ['pedido', id] });
@@ -94,43 +139,27 @@ export function PedidoDetallePage() {
   if (!pedido) return <div className="p-8 text-center text-red-500">Pedido no encontrado</div>;
 
   const stageColors: Record<number, string> = {
-    1: 'border-amber-400 bg-amber-50',
-    2: 'border-purple-400 bg-purple-50',
+    1: 'border-blue-400 bg-blue-50',
+    2: 'border-violet-400 bg-violet-50',
     3: 'border-blue-400 bg-blue-50',
-    4: 'border-green-400 bg-green-50',
-    5: 'border-amber-400 bg-amber-50',
-    6: 'border-green-600 bg-green-50',
-    7: 'border-red-400 bg-red-50',
+    4: 'border-violet-400 bg-violet-50',
+    5: 'border-teal-400 bg-teal-50',
+    6: 'border-sky-400 bg-sky-50',
+    7: 'border-emerald-500 bg-emerald-50',
+    8: 'border-red-400 bg-red-50',
   };
 
   const presupuestoCountLabel = `${presupuestos.length} presupuesto${presupuestos.length !== 1 ? 's' : ''} cargado${presupuestos.length !== 1 ? 's' : ''}`;
   const isRejected = pedido.stage === PedidoStage.RECHAZADO;
   const currentAreaLabel = user?.rol ? rolLabel(user.rol) : 'Sin área';
 
-  const getCurrentStepMessage = (stage: number) => {
-    switch (stage) {
-      case PedidoStage.APROBACION:
-        return 'El pedido está aquí. Secretaría lo tiene pendiente de aprobación.';
-      case PedidoStage.PRESUPUESTOS:
-        return presupuestos.length > 0
-          ? `El pedido está aquí. Compras lo tiene revisando ${presupuestoCountLabel} para elegir una opción.`
-          : 'El pedido está aquí. Compras lo tiene pendiente de cargar presupuestos.';
-      case PedidoStage.FIRMA:
-        return 'El pedido está aquí. Secretaría lo tiene pendiente de firmar el presupuesto elegido.';
-      case PedidoStage.GESTION_PAGOS:
-        if (pedido.bloqueado && !sellado) return 'El pedido está aquí. Tesorería lo tiene pendiente de registrar el sellado.';
-        if (!pedido.bloqueado && !pago) return 'El pedido está aquí. Tesorería lo tiene pendiente de registrar el pago.';
-        if (pago) return 'El pedido está aquí. Tesorería ya registró el pago y está listo para avanzar.';
-        return 'El pedido está aquí. Tesorería lo está gestionando.';
-      case PedidoStage.ESPERANDO_SUMINISTROS:
-        return 'El pedido está aquí. Administración / Suministros lo tiene esperando la entrega o recepción.';
-      case PedidoStage.SUMINISTROS_LISTOS:
-        return 'El pedido está aquí. Administración ya confirmó la recepción y el circuito quedó cerrado.';
-      case PedidoStage.RECHAZADO:
-        return 'El pedido quedó rechazado y frenado hasta que se revise el motivo.';
-      default:
-        return null;
-    }
+  const currentStepMessageContext = {
+    viewerRol: user?.rol,
+    presupuestosCount: presupuestos.length,
+    presupuestoCountLabel,
+    pedido,
+    sellado,
+    pago,
   };
 
   const getCompletedStepMessage = (stage: number) => {
@@ -147,6 +176,10 @@ export function PedidoDetallePage() {
         return pedido.firmadoPor
           ? `Firmado por ${fullName(pedido.firmadoPor)}.`
           : 'La firma del presupuesto quedó registrada.';
+      case PedidoStage.CARGA_FACTURA:
+        return pedido.facturaComprasUrl
+          ? `Factura cargada por ${fullName(pedido.facturaSubidaPor)}.`
+          : 'Compras debe adjuntar la factura del proveedor.';
       case PedidoStage.GESTION_PAGOS:
         if (sellado && pago) return `Tesorería registró el sellado ${sellado.numeroSellado} y el pago ${pago.numeroTransferencia}.`;
         if (sellado) return `Tesorería registró el sellado ${sellado.numeroSellado}.`;
@@ -171,6 +204,8 @@ export function PedidoDetallePage() {
         return presupuestoCountLabel;
       case PedidoStage.FIRMA:
         return pedido.firmadoPor ? `Firmó: ${fullName(pedido.firmadoPor)}` : null;
+      case PedidoStage.CARGA_FACTURA:
+        return pedido.facturaSubidaPor ? `Factura: ${fullName(pedido.facturaSubidaPor)}` : null;
       case PedidoStage.GESTION_PAGOS:
         if (sellado && pago) return `Sellado ${sellado.numeroSellado} · Pago ${pago.numeroTransferencia}`;
         if (sellado) return `Sellado: ${sellado.numeroSellado}`;
@@ -194,6 +229,8 @@ export function PedidoDetallePage() {
         return presupuestos.length > 0;
       case PedidoStage.FIRMA:
         return Boolean(pedido.firmadoPor);
+      case PedidoStage.CARGA_FACTURA:
+        return Boolean(pedido.facturaComprasUrl);
       case PedidoStage.GESTION_PAGOS:
         return Boolean(sellado || pago);
       case PedidoStage.ESPERANDO_SUMINISTROS:
@@ -231,6 +268,14 @@ export function PedidoDetallePage() {
       meta: formatDateTime(pedido.firmadoEn),
     },
     {
+      stage: PedidoStage.CARGA_FACTURA,
+      label: 'Carga de factura (Compras)',
+      icon: '🧾',
+      owner: STAGE_OWNER_LABELS[PedidoStage.CARGA_FACTURA],
+      detail: getHistoricalDetail(PedidoStage.CARGA_FACTURA),
+      meta: formatDateTime(pedido.facturaSubidaEn),
+    },
+    {
       stage: PedidoStage.GESTION_PAGOS,
       label: 'Gestión de sellos y pagos',
       icon: '🏛️',
@@ -256,9 +301,12 @@ export function PedidoDetallePage() {
     },
     ...(isRejected ? [{
       stage: PedidoStage.RECHAZADO,
-      label: 'Rechazado',
+      label: pedidoEstadoVisibleLabel(pedido),
       icon: '❌',
-      owner: STAGE_OWNER_LABELS[PedidoStage.RECHAZADO],
+      owner:
+        pedido.rechazadoDesdeStage != null
+          ? STAGE_OWNER_LABELS[pedido.rechazadoDesdeStage]
+          : STAGE_OWNER_LABELS[PedidoStage.RECHAZADO],
       detail: getHistoricalDetail(PedidoStage.RECHAZADO) || 'Sin motivo registrado.',
       meta: null,
     }] : []),
@@ -276,7 +324,7 @@ export function PedidoDetallePage() {
     },
   ];
 
-  if (pedido.aprobadoPor || pedido.notaAprobacion) {
+  if (pedido.stage !== PedidoStage.RECHAZADO && (pedido.aprobadoPor || pedido.notaAprobacion)) {
     historyComments.push({
       id: 'aprobacion',
       title: 'Aprobación de suministros',
@@ -310,6 +358,18 @@ export function PedidoDetallePage() {
       area: STAGE_OWNER_LABELS[PedidoStage.FIRMA],
       detail: 'La firma del presupuesto quedó registrada en el sistema.',
       createdAt: pedido.firmadoEn || pedido.updatedAt,
+      kind: 'system',
+    });
+  }
+
+  if (pedido.facturaComprasUrl && pedido.facturaSubidaPor) {
+    historyComments.push({
+      id: 'factura-compras',
+      title: 'Factura del proveedor cargada',
+      actor: fullName(pedido.facturaSubidaPor),
+      area: STAGE_OWNER_LABELS[PedidoStage.CARGA_FACTURA],
+      detail: 'Se adjuntó la factura para gestión de Tesorería.',
+      createdAt: pedido.facturaSubidaEn || pedido.updatedAt,
       kind: 'system',
     });
   }
@@ -350,12 +410,15 @@ export function PedidoDetallePage() {
     });
   }
 
-  if (pedido.notaRechazo) {
+  if (pedido.stage === PedidoStage.RECHAZADO && pedido.notaRechazo) {
     historyComments.push({
       id: 'rechazo',
-      title: 'Pedido rechazado',
-      actor: STAGE_OWNER_LABELS[PedidoStage.RECHAZADO],
-      area: STAGE_OWNER_LABELS[PedidoStage.RECHAZADO],
+      title: pedidoEstadoVisibleLabel(pedido),
+      actor: fullName(pedido.aprobadoPor),
+      area:
+        pedido.rechazadoDesdeStage != null
+          ? STAGE_OWNER_LABELS[pedido.rechazadoDesdeStage]
+          : 'Secretaría',
       detail: pedido.notaRechazo,
       createdAt: pedido.updatedAt,
       kind: 'system',
@@ -365,6 +428,9 @@ export function PedidoDetallePage() {
   const comments = [...historyComments, ...chatMessages].sort(
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
   );
+
+  const auditTimeline = buildPedidoAuditTimeline(pedido, presupuestos, sellado ?? null, pago ?? null);
+  const auditResumen = buildPedidoAuditResumen(pedido, presupuestos);
 
   const handleSendMessage = () => {
     const detail = chatInput.trim();
@@ -387,9 +453,17 @@ export function PedidoDetallePage() {
   const canAprobar = (user?.rol === 'secretaria' || user?.rol === 'admin') && pedido.stage === PedidoStage.APROBACION;
   const canRechazar = (user?.rol === 'secretaria' || user?.rol === 'admin') && (pedido.stage === PedidoStage.APROBACION || pedido.stage === PedidoStage.FIRMA);
   const canFirmar = (user?.rol === 'secretaria' || user?.rol === 'admin') && pedido.stage === PedidoStage.FIRMA;
+  const canSubirFactura =
+    (user?.rol === 'compras' || user?.rol === 'admin') && pedido.stage === PedidoStage.CARGA_FACTURA;
   const canSellado = (user?.rol === 'tesoreria' || user?.rol === 'admin') && pedido.stage === PedidoStage.GESTION_PAGOS && pedido.bloqueado && !sellado;
   const canPago = (user?.rol === 'tesoreria' || user?.rol === 'admin') && pedido.stage === PedidoStage.GESTION_PAGOS && !pedido.bloqueado && !pago;
   const canRecepcion = user?.rol === 'admin' && pedido.stage === PedidoStage.ESPERANDO_SUMINISTROS;
+  const canGestionarPresupuestos =
+    (user?.rol === 'compras' || user?.rol === 'admin') && pedido.stage === PedidoStage.PRESUPUESTOS;
+
+  const presupuestoElegidoFirma = presupuestoParaFirmaId
+    ? presupuestos.find((p) => p.id === presupuestoParaFirmaId)
+    : undefined;
 
   return (
     <div className="page-shell-narrow">
@@ -412,7 +486,7 @@ export function PedidoDetallePage() {
             <div className="flex items-center gap-3 mt-2 flex-wrap">
               <span className="text-sm text-slate-500">📍 {pedido.area}</span>
               <span className={`badge ${stageBadgeClass(pedido.stage)}`}>
-                {stageIcon(pedido.stage)} {stageLabel(pedido.stage)}
+                {stageIcon(pedido.stage)} {pedidoEstadoVisibleLabel(pedido)}
               </span>
             </div>
           </div>
@@ -426,8 +500,28 @@ export function PedidoDetallePage() {
 
         {/* Action buttons */}
         <div className="flex flex-wrap gap-2 mt-5 pt-4 border-t border-slate-100">
+          {canGestionarPresupuestos && (
+            <button type="button" onClick={() => setActiveTab('presupuestos')} className="btn btn-primary btn-sm">
+              💰 Gestionar presupuestos
+            </button>
+          )}
           {canAprobar && <button onClick={() => setModal('aprobar')} className="btn btn-primary btn-sm">✅ Aprobar</button>}
-          {canFirmar && <button onClick={() => setModal('firmar')} className="btn btn-primary btn-sm">✍️ Firmar presupuesto</button>}
+          {canFirmar && (
+            <button
+              type="button"
+              onClick={() => setModal('firmar')}
+              disabled={!presupuestoElegidoFirma}
+              title={
+                presupuestoElegidoFirma
+                  ? undefined
+                  : 'Elegí primero la cotización en la pestaña Presupuestos.'
+              }
+              className="btn btn-primary btn-sm disabled:opacity-45 disabled:cursor-not-allowed"
+            >
+              ✍️ Firmar presupuesto
+            </button>
+          )}
+          {canSubirFactura && <button onClick={() => setModal('subir-factura')} className="btn btn-primary btn-sm">📄 Subir factura</button>}
           {canSellado && <button onClick={() => setModal('sellado')} className="btn btn-danger btn-sm">🏛️ Registrar sellado</button>}
           {canPago && <button onClick={() => setModal('pago')} className="btn btn-success btn-sm">💳 Registrar pago</button>}
           {canRecepcion && <button onClick={() => setModal('confirmar-recepcion')} className="btn btn-success btn-sm">📦 Confirmar recepción</button>}
@@ -437,7 +531,7 @@ export function PedidoDetallePage() {
 
       {/* Tabs */}
       <div className="segmented-tabs">
-        {(['flujo', 'presupuestos', 'comentarios', 'documentos', 'info'] as const).map(tab => (
+        {(['flujo', 'presupuestos', 'comentarios', 'auditoria', 'documentos', 'info'] as const).map(tab => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -449,6 +543,8 @@ export function PedidoDetallePage() {
                 ? `💰 Presupuestos (${presupuestos.length})`
               : tab === 'comentarios'
                 ? `💬 Comentarios (${comments.length})`
+                : tab === 'auditoria'
+                  ? `🔍 Auditoría (${auditTimeline.length})`
                 : tab === 'documentos'
                   ? '📎 Documentos'
                   : 'ℹ️ Info'}
@@ -464,7 +560,11 @@ export function PedidoDetallePage() {
               const done = isStepCompleted(step.stage);
               const current = pedido.stage === step.stage;
               const pending = !done && !current;
-              const summary = current ? getCurrentStepMessage(step.stage) : done ? getCompletedStepMessage(step.stage) : null;
+              const summary = current
+                ? getCurrentStepMessage(step.stage, currentStepMessageContext)
+                : done
+                  ? getCompletedStepMessage(step.stage)
+                  : null;
               return (
                 <div key={step.stage} className="flex gap-4">
                   <div className="flex flex-col items-center">
@@ -498,6 +598,69 @@ export function PedidoDetallePage() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Tab: Auditoría */}
+      {activeTab === 'auditoria' && (
+        <div className="space-y-4">
+          <p className="text-sm text-slate-500 px-1">
+            Registro derivado de los datos del pedido (quién creó, quién cargó cotizaciones, quién aprobó o rechazó, firmas, tesorería y cierre).
+          </p>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="card p-4 border-l-4 border-l-blue-400">
+              <div className="text-xs font-bold uppercase text-slate-400">Inicio del trámite</div>
+              <div className="font-semibold text-slate-900 mt-1">{auditResumen.inicio.actor}</div>
+              <div className="text-xs text-slate-500 mt-0.5">{formatDateTime(auditResumen.inicio.at)}</div>
+              {auditResumen.inicio.extra && <div className="text-xs text-slate-600 mt-2">{auditResumen.inicio.extra}</div>}
+            </div>
+            <div className="card p-4 border-l-4 border-l-violet-400">
+              <div className="text-xs font-bold uppercase text-slate-400">Compras (primera intervención)</div>
+              <div className="font-semibold text-slate-900 mt-1">{auditResumen.compras.actor}</div>
+              <div className="text-xs text-slate-500 mt-0.5">{formatDateTime(auditResumen.compras.at)}</div>
+              {auditResumen.compras.extra && <div className="text-xs text-slate-600 mt-2">{auditResumen.compras.extra}</div>}
+            </div>
+            <div className="card p-4 border-l-4 border-l-emerald-400">
+              <div className="text-xs font-bold uppercase text-slate-400">Secretaría</div>
+              <div className="font-semibold text-slate-900 mt-1">
+                <span className="text-emerald-700">{auditResumen.secretaria.label}</span>
+                {auditResumen.secretaria.actor !== '—' && ` · ${auditResumen.secretaria.actor}`}
+              </div>
+              <div className="text-xs text-slate-500 mt-0.5">{formatDateTime(auditResumen.secretaria.at)}</div>
+              {auditResumen.secretaria.extra && (
+                <div className="text-xs text-slate-600 mt-2 line-clamp-3">{auditResumen.secretaria.extra}</div>
+              )}
+            </div>
+          </div>
+          <div className="card p-6">
+            <div className="text-sm font-bold text-slate-800 mb-4">Línea de tiempo</div>
+            <div className="space-y-0">
+              {auditTimeline.map((entry, i) => (
+                <div key={entry.id} className="flex gap-4">
+                  <div className="flex flex-col items-center">
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-base flex-shrink-0 border-2 border-slate-200 bg-slate-50">
+                      {entry.icon}
+                    </div>
+                    {i < auditTimeline.length - 1 && (
+                      <div className="w-0.5 flex-1 my-1 bg-slate-100" style={{ minHeight: '20px' }} />
+                    )}
+                  </div>
+                  <div className={`pb-6 flex-1 min-w-0 ${i === auditTimeline.length - 1 ? 'pb-0' : ''}`}>
+                    <div className="flex flex-wrap items-baseline justify-between gap-2">
+                      <div className="font-semibold text-sm text-slate-900">{entry.title}</div>
+                      <div className="text-xs text-slate-400 whitespace-nowrap">{formatDateTime(entry.at)}</div>
+                    </div>
+                    <div className="text-xs text-slate-500 mt-0.5">
+                      {entry.actor}
+                      {entry.actorRol ? ` · ${entry.actorRol}` : ''}
+                      {entry.sector ? ` · ${entry.sector}` : ''}
+                    </div>
+                    <div className="text-sm text-slate-600 mt-2">{entry.detail}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </div>
       )}
@@ -552,44 +715,177 @@ export function PedidoDetallePage() {
       )}
 
       {/* Tab: Presupuestos */}
-      {activeTab === 'presupuestos' && (
-        <div className="space-y-3">
-          {presupuestos.length === 0 ? (
-            <div className="card p-8 text-center text-slate-400">Sin presupuestos cargados aún</div>
-          ) : presupuestos.map((p, i) => (
-            <div key={p.id} className="card p-5 border-l-4 border-l-green-400">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-green-100 border-2 border-green-300 text-green-700 font-bold text-sm flex items-center justify-center">{i + 1}</div>
-                  <div>
-                    <div className="font-bold">{p.proveedor}</div>
-                    {p.contacto && <div className="text-xs text-slate-500">{p.contacto}</div>}
+      {activeTab === 'presupuestos' &&
+        (canGestionarPresupuestos ? (
+          <PedidoPresupuestosComprasPanel
+            pedidoId={pedido.id}
+            pedido={pedido}
+            compactHeader
+            onEnviarFirmaSuccess={() => {
+              refetch();
+            }}
+          />
+        ) : (
+          <div className="space-y-3">
+            {presupuestos.length === 0 ? (
+              <div className="card p-8 text-center text-slate-400">Sin presupuestos cargados aún</div>
+            ) : (
+              <>
+                {canFirmar && (
+                  <div
+                    className="rounded-2xl border-2 border-amber-200 bg-gradient-to-br from-amber-50 via-white to-white p-4 sm:p-5 shadow-sm"
+                    role="region"
+                    aria-label="Instrucciones para firmar"
+                  >
+                    <div className="text-sm font-extrabold text-amber-950 tracking-tight">
+                      Secretaría: tres pasos simples
+                    </div>
+                    <ol className="mt-2 space-y-1.5 text-sm text-amber-950/90 list-decimal list-inside marker:font-bold">
+                      <li>
+                        La cotización más baja aparece con la etiqueta <span className="font-semibold">Menor valor</span> (puede haber más de una si empatan).
+                      </li>
+                      <li>
+                        Tocá la tarjeta del proveedor que vas a <span className="font-semibold">autorizar con tu firma</span>. Las demás quedan como sin firmar — no seleccionadas.
+                      </li>
+                      <li>
+                        Usá el botón <span className="font-semibold">Firmar presupuesto</span> arriba cuando esté listo.
+                      </li>
+                    </ol>
                   </div>
-                </div>
-                <div className="text-right">
-                  <div className="font-black font-mono text-lg">{formatMoney(p.monto)}</div>
-                  {p.plazoEntrega && <div className="text-xs text-slate-500">Entrega: {p.plazoEntrega}</div>}
-                </div>
-              </div>
-              {p.notas && <div className="mt-2 text-sm text-slate-600 bg-slate-50 rounded-lg p-3">{p.notas}</div>}
-              {p.archivoUrl && <a href={p.archivoUrl} target="_blank" rel="noreferrer" className="mt-2 doc-link">📄 Ver PDF del presupuesto →</a>}
-              {pedido.proveedorSeleccionado === p.proveedor && (
-                <div className="mt-2 inline-flex items-center gap-1 text-xs font-bold text-green-700 bg-green-100 px-2 py-1 rounded-full">✅ Seleccionado</div>
-              )}
-            </div>
-          ))}
-        </div>
-      )}
+                )}
+                {presupuestos.map((p, i) => {
+                  const esElegidoFirma = canFirmar && presupuestoParaFirmaId === p.id;
+                  const menorValor = presupuestosMenorValorIds.has(p.id);
+                  const borderClass = canFirmar
+                    ? esElegidoFirma
+                      ? 'border-l-blue-500 ring-2 ring-blue-200/90 bg-blue-50/50'
+                      : 'border-l-slate-300 bg-white hover:border-l-slate-400'
+                    : 'border-l-green-400 hover:shadow-md hover:-translate-y-0.5';
+                  return (
+                    <div
+                      key={p.id}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => {
+                        if (canFirmar) setPresupuestoParaFirmaId(p.id);
+                        else setPresupuestoModal(p);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          if (canFirmar) setPresupuestoParaFirmaId(p.id);
+                          else setPresupuestoModal(p);
+                        }
+                      }}
+                      className={`card p-5 border-l-4 cursor-pointer transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-offset-2 ${borderClass}`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <div
+                            className={`w-8 h-8 shrink-0 rounded-full border-2 font-bold text-sm flex items-center justify-center ${
+                              canFirmar
+                                ? esElegidoFirma
+                                  ? 'bg-blue-600 border-blue-700 text-white'
+                                  : 'bg-slate-100 border-slate-300 text-slate-600'
+                                : 'bg-green-100 border-green-300 text-green-700'
+                            }`}
+                          >
+                            {canFirmar && esElegidoFirma ? '✓' : i + 1}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="font-bold text-slate-800 truncate">{p.proveedor}</div>
+                            <div className="text-xs text-slate-500">
+                              {formatDate(p.createdAt)}
+                              {canFirmar ? ' · Tocá la tarjeta para marcar la opción a firmar' : ' · Tocá para ver detalle'}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="font-black font-mono text-lg">{formatMoney(p.monto)}</div>
+                          {p.plazoEntrega && <div className="text-xs text-slate-500">Entrega: {p.plazoEntrega}</div>}
+                        </div>
+                      </div>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {menorValor && (
+                          <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-950 bg-amber-100 border border-amber-200 px-2.5 py-1 rounded-full">
+                            Menor valor
+                          </span>
+                        )}
+                        {canFirmar &&
+                          (esElegidoFirma ? (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-blue-900 bg-blue-100 border border-blue-200 px-2.5 py-1 rounded-full">
+                              ✓ Elegido para firmar
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-600 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-full">
+                              Sin firmar — No seleccionado
+                            </span>
+                          ))}
+                        {!canFirmar && pedido.proveedorSeleccionado === p.proveedor && (
+                          <span className="inline-flex items-center gap-1 text-xs font-bold text-green-700 bg-green-100 px-2.5 py-1 rounded-full">
+                            Seleccionado por Compras
+                          </span>
+                        )}
+                      </div>
+                      {canFirmar && (
+                        <button
+                          type="button"
+                          className="mt-3 text-xs font-bold text-blue-700 hover:text-blue-900 hover:underline"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPresupuestoModal(p);
+                          }}
+                        >
+                          Ver ficha y PDF →
+                        </button>
+                      )}
+                    </div>
+                  );
+                })}
+              </>
+            )}
+          </div>
+        ))}
 
       {/* Tab: Documentos */}
       {activeTab === 'documentos' && (
         <div className="card p-6 space-y-4">
+          {pedido.referenciasImagenes && pedido.referenciasImagenes.length > 0 && (
+            <div className="info-panel" style={{ borderColor: 'var(--sky-brd)', background: 'linear-gradient(135deg,#e0f2fe,#f0f9ff)' }}>
+              <div className="text-xs font-bold uppercase mb-2" style={{ color: 'var(--sky-600, #0284c7)' }}>
+                📷 Referencias de la solicitud
+              </div>
+              <p className="text-xs text-slate-600 mb-3">Imágenes adjuntas al crear el pedido.</p>
+              <div className="flex flex-wrap gap-2">
+                {pedido.referenciasImagenes.map((r, i) => (
+                  <a
+                    key={r.url}
+                    href={r.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="block rounded-lg border border-slate-200 overflow-hidden bg-white shadow-sm hover:ring-2 hover:ring-sky-300 transition"
+                  >
+                    <img src={r.url} alt={`Referencia ${i + 1}`} className="h-28 w-28 object-cover" />
+                  </a>
+                ))}
+              </div>
+            </div>
+          )}
           {/* Firma */}
           {pedido.firmaUrlUsada && (
             <div className="info-panel">
               <div className="info-pair-label mb-2">Firma digital</div>
               <img src={pedido.firmaUrlUsada} alt="Firma" className="max-h-20 object-contain bg-white border border-slate-100 rounded p-2" />
               <div className="text-xs text-slate-400 mt-1 font-mono">{pedido.firmaHash}</div>
+            </div>
+          )}
+          {pedido.facturaComprasUrl && (
+            <div className="info-panel" style={{ borderColor: 'var(--purple-brd)', background: 'linear-gradient(135deg,#ede9fe,#f5f3ff)' }}>
+              <div className="text-xs font-bold uppercase mb-2" style={{ color: 'var(--purple)' }}>🧾 Factura del proveedor (Compras)</div>
+              <a href={pedido.facturaComprasUrl} target="_blank" rel="noreferrer" className="doc-link">📄 Ver factura PDF →</a>
+              {pedido.facturaSubidaPor && (
+                <div className="text-xs text-slate-500 mt-2">Cargada por {fullName(pedido.facturaSubidaPor)}{pedido.facturaSubidaEn ? ` · ${formatDateTime(pedido.facturaSubidaEn)}` : ''}</div>
+              )}
             </div>
           )}
           {/* Sellado */}
@@ -616,7 +912,11 @@ export function PedidoDetallePage() {
               {pago.facturaUrl && <a href={pago.facturaUrl} target="_blank" rel="noreferrer" className="mt-2 doc-link">📄 Factura →</a>}
             </div>
           )}
-          {!pedido.firmaUrlUsada && !sellado && !pago && (
+          {!pedido.firmaUrlUsada &&
+            !pedido.facturaComprasUrl &&
+            !sellado &&
+            !pago &&
+            !(pedido.referenciasImagenes && pedido.referenciasImagenes.length > 0) && (
             <div className="empty-state py-6">
               <div className="empty-title">Sin documentos adjuntos aún</div>
             </div>
@@ -629,7 +929,7 @@ export function PedidoDetallePage() {
         <div className="card p-6">
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div><div className="info-pair-label">N° Pedido</div><div className="info-pair-value font-mono">{pedido.numero}</div></div>
-            <div><div className="info-pair-label">Estado actual</div><div className="info-pair-value">{stageIcon(pedido.stage)} {stageLabel(pedido.stage)}</div></div>
+            <div><div className="info-pair-label">Estado actual</div><div className="info-pair-value">{stageIcon(pedido.stage)} {pedidoEstadoVisibleLabel(pedido)}</div></div>
             <div><div className="info-pair-label">Solicitado por</div><div className="info-pair-value">{fullName(pedido.creadoPor)}</div></div>
             <div><div className="info-pair-label">Fecha creación</div><div className="info-pair-value">{formatDate(pedido.createdAt)}</div></div>
             <div><div className="info-pair-label">Área solicitante</div><div className="info-pair-value">{pedido.area}</div></div>
@@ -640,8 +940,27 @@ export function PedidoDetallePage() {
             {pedido.firmadoPor && <div><div className="info-pair-label">Firmado por</div><div className="info-pair-value">{fullName(pedido.firmadoPor)}</div></div>}
             {pedido.detalle && <div className="col-span-2"><div className="info-pair-label">Detalle</div><div className="info-pair-value">{pedido.detalle}</div></div>}
             {pedido.firmaHash && <div className="col-span-2"><div className="info-pair-label">Hash firma</div><div className="font-mono text-xs text-slate-600 mt-1">{pedido.firmaHash}</div></div>}
+            {pedido.stage === PedidoStage.RECHAZADO && pedido.notaRechazo && (
+              <div className="col-span-2"><div className="info-pair-label">Motivo del rechazo</div><div className="info-pair-value whitespace-pre-wrap">{pedido.notaRechazo}</div></div>
+            )}
           </div>
         </div>
+      )}
+
+      {presupuestoModal && pedido && (
+        <PresupuestoDetalleModal
+          presupuesto={presupuestoModal}
+          pedidoNumero={pedido.numero}
+          pedidoDescripcion={pedido.descripcion}
+          index={presupuestos.findIndex((x) => x.id === presupuestoModal.id) + 1}
+          onClose={() => setPresupuestoModal(null)}
+          isSeleccionado={
+            canFirmar
+              ? presupuestoParaFirmaId === presupuestoModal.id
+              : pedido.proveedorSeleccionado === presupuestoModal.proveedor
+          }
+          isMenorValor={presupuestosMenorValorIds.has(presupuestoModal.id)}
+        />
       )}
 
       {/* Action modal */}
@@ -649,6 +968,8 @@ export function PedidoDetallePage() {
         <ActionModal
           pedido={pedido}
           action={modal}
+          firmarPresupuesto={modal === 'firmar' ? presupuestoElegidoFirma ?? null : null}
+          rechazarMeta={modal === 'rechazar' ? { presupuestosCargados: presupuestos.length } : null}
           onClose={() => setModal(null)}
           onSuccess={() => { setModal(null); refetch(); }}
         />

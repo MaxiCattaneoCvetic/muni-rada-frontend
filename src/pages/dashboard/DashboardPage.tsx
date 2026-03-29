@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { pedidosApi } from '../../api/services';
+import { pedidosApi, configApi } from '../../api/services';
 import { useAuthStore } from '../../store/auth.store';
 import { KanbanBoard } from '../../components/kanban/KanbanBoard';
 import { formatDate, formatMoney, rolLabel, pedidoNeedsMyAction } from '../../lib/utils';
@@ -53,10 +53,18 @@ export default function DashboardPage({ mode = 'dashboard' }: { mode?: Dashboard
   const [actionModal, setActionModal] = useState<{ pedido: Pedido; action: string } | null>(null);
 
   const { data: pedidos = [], isLoading } = useQuery({
-    queryKey: ['pedidos'],
+    queryKey: ['pedidos', user?.rol],
     queryFn: () => pedidosApi.getAll(),
     refetchInterval: 30000,
   });
+
+  const { data: sistemaConfig } = useQuery({
+    queryKey: ['config'],
+    queryFn: () => configApi.get(),
+    staleTime: 60_000,
+  });
+  const maxPresupuestos = sistemaConfig?.maxPresupuestos ?? 5;
+  const minPresupuestos = Math.min(sistemaConfig?.minPresupuestos ?? 3, maxPresupuestos);
 
   const focusedStage = user?.rol === 'secretaria' ? MODE_STAGE[mode] : undefined;
   const displayPedidos = focusedStage
@@ -69,7 +77,7 @@ export default function DashboardPage({ mode = 'dashboard' }: { mode?: Dashboard
   const pendingRoute = approvalsPending ? '/aprobar' : signaturesPending ? '/firmar' : '/dashboard';
   const myPending = displayPedidos.filter((p) => pedidoNeedsMyAction(p.stage, user?.rol || ''));
   const urgentes = myPending.filter((p) => p.urgente);
-  const enCurso = displayPedidos.filter((p) => p.stage < 6 && p.stage !== 7);
+  const enCurso = displayPedidos.filter((p) => p.stage < PedidoStage.SUMINISTROS_LISTOS && p.stage !== PedidoStage.RECHAZADO);
   const bloqueados = displayPedidos.filter((p) => p.bloqueado);
   const listos = displayPedidos.filter((p) => p.stage === PedidoStage.SUMINISTROS_LISTOS);
   const queuePedidos = focusedStage
@@ -100,6 +108,10 @@ export default function DashboardPage({ mode = 'dashboard' }: { mode?: Dashboard
 
   const handleAction = (pedido: Pedido, action: string) => {
     if (action === 'cargar-presupuesto') return navigate(`/presupuestos/${pedido.id}`);
+    if (action === 'firmar') {
+      navigate(`/pedidos/${pedido.id}`, { state: { openPresupuestosTab: true } });
+      return;
+    }
     const route = getRouteForAction(action);
     if (route && user?.rol === 'secretaria' && mode !== route.slice(1)) {
       navigate(route);
@@ -314,10 +326,12 @@ export default function DashboardPage({ mode = 'dashboard' }: { mode?: Dashboard
             <div className="text-center py-16 text-slate-400">Cargando pedidos...</div>
           ) : (
             <KanbanBoard
-              pedidos={displayPedidos.filter((p) => p.stage !== PedidoStage.RECHAZADO)}
+              pedidos={displayPedidos}
               onPedidoClick={p => navigate(`/pedidos/${p.id}`)}
               onAction={handleAction}
               visibleStages={visibleStages}
+              minPresupuestos={minPresupuestos}
+              maxPresupuestos={maxPresupuestos}
             />
           )}
         </>

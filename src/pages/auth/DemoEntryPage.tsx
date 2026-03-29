@@ -4,7 +4,7 @@ import { authApi } from '../../api/services';
 import { useAuthStore } from '../../store/auth.store';
 import type { UserRole } from '../../types';
 import { isDemoMode } from '../../lib/demo';
-import { cn, rolLabel, rolBadgeClass } from '../../lib/utils';
+import { cn } from '../../lib/utils';
 import { DEMO_ROLE_ICONS, demoRoleIconSurface } from '../../lib/demo-role-icons';
 
 const ROLES: UserRole[] = ['secretaria', 'compras', 'tesoreria', 'admin'];
@@ -155,7 +155,6 @@ export default function DemoEntryPage() {
           {ROLES.map((rol) => {
             const Icon = DEMO_ROLE_ICONS[rol];
             const copy = ROLE_COPY[rol];
-            const badgeClass = rolBadgeClass(rol);
             const iconSurface = demoRoleIconSurface(rol);
             return (
               <button
@@ -211,11 +210,6 @@ export default function DemoEntryPage() {
                   >
                     VER
                   </div>
-                </div>
-                <div className="mt-2.5 ml-[56px]">
-                  <span className={cn('badge', badgeClass)} style={{ fontSize: '10px' }}>
-                    {rolLabel(rol)}
-                  </span>
                 </div>
               </button>
             );

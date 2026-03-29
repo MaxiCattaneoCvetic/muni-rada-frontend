@@ -37,6 +37,17 @@
     --purple-mid: #8b5cf6;
     --purple-lt: #ede9fe;
     --purple-brd: #c4b5fd;
+    /* Sectores operativos (contraste accesible, tonos distinguibles) */
+    --teal: #0f766e;
+    --teal-mid: #14b8a6;
+    --teal-lt: #ccfbf1;
+    --teal-brd: #5eead4;
+    --teal-glow: rgba(20,184,166,.2);
+    --sky: #0369a1;
+    --sky-mid: #0ea5e9;
+    --sky-lt: #e0f2fe;
+    --sky-brd: #7dd3fc;
+    --sky-glow: rgba(14,165,233,.18);
     --r: 12px;
     --r2: 8px;
     --r3: 16px;
@@ -301,6 +312,16 @@
     background: linear-gradient(135deg, #ede9fe, #f5f3ff);
     color: var(--purple);
     border: 1px solid var(--purple-brd);
+  }
+  .badge-teal {
+    background: linear-gradient(135deg, #ccfbf1, #f0fdfa);
+    color: var(--teal);
+    border: 1px solid var(--teal-brd);
+  }
+  .badge-sky {
+    background: linear-gradient(135deg, #e0f2fe, #f0f9ff);
+    color: var(--sky);
+    border: 1px solid var(--sky-brd);
   }
   .badge-slate { 
     background: var(--surface);

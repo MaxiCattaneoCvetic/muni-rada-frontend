@@ -5,6 +5,7 @@ import { useAuthStore } from '../../store/auth.store';
 import { authApi, pagosApi, pedidosApi } from '../../api/services';
 import { isDemoMode } from '../../lib/demo';
 import type { UserRole } from '../../types';
+import { PedidoStage } from '../../types';
 import { cn, rolLabel, rolBadgeClass, getInitials } from '../../lib/utils';
 import {
   DEMO_ROLE_ICONS,
@@ -21,10 +22,12 @@ const NAV_BY_ROLE: Record<string, { icon: string; label: string; to: string; bad
     { icon: '✅', label: 'Aprobar pedidos', to: '/aprobar', badgeKey: 'aprobar' },
     { icon: '✍️', label: 'Firmar presupuesto', to: '/firmar', badgeKey: 'firmar' },
     { icon: '📦', label: 'Historial de pedidos', to: '/historial' },
+    { icon: '🏪', label: 'Proveedores', to: '/proveedores' },
   ],
   compras: [
     { icon: '🏠', label: 'Inicio', to: '/dashboard' },
     { icon: '💰', label: 'Presupuestos', to: '/presupuestos', badgeKey: 'presupuestos' },
+    { icon: '🏪', label: 'Proveedores', to: '/proveedores' },
   ],
   tesoreria: [
     { icon: '🏠', label: 'Inicio', to: '/dashboard' },
@@ -34,6 +37,8 @@ const NAV_BY_ROLE: Record<string, { icon: string; label: string; to: string; bad
   admin: [
     { icon: '🏠', label: 'Inicio', to: '/dashboard' },
     { icon: '📦', label: 'Todos los pedidos', to: '/admin/pedidos' },
+    { icon: '🏪', label: 'Proveedores', to: '/proveedores' },
+    { icon: '👥', label: 'Usuarios', to: '/admin/usuarios' },
     { icon: '📊', label: 'Reportes', to: '/admin/reportes' },
     { icon: '⚙️', label: 'Configuración', to: '/admin/config' },
   ],
@@ -55,7 +60,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const nav = NAV_BY_ROLE[user?.rol || ''] || [];
   const avatarStyle = ROL_AVATAR_STYLE[user?.rol || ''] || ROL_AVATAR_STYLE.secretaria;
   const { data: pedidos = [] } = useQuery({
-    queryKey: ['pedidos', 'sidebar'],
+    queryKey: ['pedidos', 'sidebar', user?.rol],
     queryFn: () => pedidosApi.getAll(),
     refetchInterval: 30000,
   });
@@ -66,10 +71,10 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     enabled: user?.rol === 'tesoreria' || user?.rol === 'admin',
   });
   const navBadgeCount = {
-    aprobar: pedidos.filter((p) => p.stage === 1).length,
-    firmar: pedidos.filter((p) => p.stage === 3).length,
-    presupuestos: pedidos.filter((p) => p.stage === 2).length,
-    pagos: pedidos.filter((p) => p.stage === 4).length,
+    aprobar: pedidos.filter((p) => p.stage === PedidoStage.APROBACION).length,
+    firmar: pedidos.filter((p) => p.stage === PedidoStage.FIRMA).length,
+    presupuestos: pedidos.filter((p) => p.stage === PedidoStage.PRESUPUESTOS || p.stage === PedidoStage.CARGA_FACTURA).length,
+    pagos: pedidos.filter((p) => p.stage === PedidoStage.GESTION_PAGOS).length,
     facturas: pagos.length,
   };
 
@@ -104,8 +109,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
 
       {/* Sidebar */}
       <aside className={cn(
-        'fixed lg:relative inset-y-0 left-0 z-50 flex-shrink-0 flex flex-col',
-        'h-screen overflow-y-auto transition-transform duration-300 lg:translate-x-0',
+        'fixed lg:relative inset-y-0 left-0 z-50 flex-shrink-0 flex min-h-0 flex-col',
+        'h-screen overflow-hidden transition-transform duration-300 lg:translate-x-0',
         sidebarOpen ? 'translate-x-0' : '-translate-x-full',
       )}
       style={{
@@ -119,52 +124,8 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
           <div className="mt-0.5 text-[10px] uppercase tracking-[.6px] text-white/40">Municipalidad Rada Tilly</div>
         </div>
 
-        {/* User profile */}
-        <div className="mx-2 mb-2">
-        <Link
-          to="/mi-perfil"
-          onClick={() => setSidebarOpen(false)}
-          className="flex items-center gap-2.5 rounded-[10px] px-3 py-2.5 transition-all"
-          style={{
-            background: 'rgba(255,255,255,.05)',
-            border: '1px solid rgba(255,255,255,.08)',
-          }}
-          onMouseEnter={(e) => {
-            e.currentTarget.style.background = 'rgba(239,68,68,.15)';
-            e.currentTarget.style.borderColor = 'rgba(239,68,68,.3)';
-          }}
-          onMouseLeave={(e) => {
-            e.currentTarget.style.background = 'rgba(255,255,255,.05)';
-            e.currentTarget.style.borderColor = 'rgba(255,255,255,.08)';
-          }}
-        >
-          <div
-            className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[9px] text-[12px] font-extrabold"
-            style={{ background: avatarStyle.iconBg, color: avatarStyle.iconColor }}
-          >
-            {getInitials(user?.nombre || 'U', user?.apellido)}
-          </div>
-          <div className="min-w-0 flex-1">
-            <div className="truncate text-[13px] font-bold text-white">{user?.nombre} {user?.apellido}</div>
-            <div className="mt-px text-[11px] text-white/45">{rolLabel(user?.rol || '')}</div>
-          </div>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              handleLogout();
-            }}
-            className="ml-auto text-[10px] font-bold transition-colors"
-            style={{ color: 'rgba(239,68,68,.8)' }}
-          >
-            Salir
-          </button>
-        </Link>
-        </div>
-
         {/* Nav */}
-        <nav className="flex-1 px-2 pb-2 pt-1">
+        <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-2 pt-1">
           {nav.map(({ icon, label, to, badgeKey }) => {
             const active = location.pathname === to;
             const count = badgeKey ? navBadgeCount[badgeKey] : 0;
@@ -225,6 +186,50 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
             );
           })}
         </nav>
+
+        {/* User profile — pie del sidebar */}
+        <div className="mx-2 mt-auto shrink-0 border-t border-white/[0.08] pb-3 pt-2">
+          <Link
+            to="/mi-perfil"
+            onClick={() => setSidebarOpen(false)}
+            className="flex items-center gap-2.5 rounded-[10px] px-3 py-2.5 transition-all"
+            style={{
+              background: 'rgba(255,255,255,.05)',
+              border: '1px solid rgba(255,255,255,.08)',
+            }}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(239,68,68,.15)';
+              e.currentTarget.style.borderColor = 'rgba(239,68,68,.3)';
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = 'rgba(255,255,255,.05)';
+              e.currentTarget.style.borderColor = 'rgba(255,255,255,.08)';
+            }}
+          >
+            <div
+              className="flex h-[34px] w-[34px] shrink-0 items-center justify-center rounded-[9px] text-[12px] font-extrabold"
+              style={{ background: avatarStyle.iconBg, color: avatarStyle.iconColor }}
+            >
+              {getInitials(user?.nombre || 'U', user?.apellido)}
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="truncate text-[13px] font-bold text-white">{user?.nombre} {user?.apellido}</div>
+              <div className="mt-px text-[11px] text-white/45">{rolLabel(user?.rol || '')}</div>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                handleLogout();
+              }}
+              className="ml-auto text-[10px] font-bold transition-colors"
+              style={{ color: 'rgba(239,68,68,.8)' }}
+            >
+              Salir
+            </button>
+          </Link>
+        </div>
 
       </aside>
 

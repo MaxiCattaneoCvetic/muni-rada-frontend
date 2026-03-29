@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { configApi, pagosApi, pedidosApi } from '../../api/services';
-import { formatMoney, formatDate, stageLabel, stageBadgeClass, stageIcon } from '../../lib/utils';
+import { formatMoney, formatDate, stageLabel, stageBadgeClass, stageIcon, pedidoEstadoVisibleLabel } from '../../lib/utils';
 import { useNavigate } from 'react-router-dom';
+import { useAuthStore } from '../../store/auth.store';
 import { ActionModal } from '../../components/ui/ActionModal';
 import type { Pedido } from '../../types';
 import { PedidoStage } from '../../types';
@@ -44,13 +45,28 @@ export function AdminConfigPage() {
           <p className="text-xs text-slate-400 mt-1">Pedidos que superen este monto requerirán sellado antes del pago.</p>
         </div>
         <div>
-          <label className="label">Presupuestos mínimos requeridos</label>
+          <label className="label">Máximo de cotizaciones por pedido</label>
           <input
-            type="number" min={1} max={5}
-            defaultValue={config.minPresupuestos}
-            onChange={e => setForm((f: any) => ({ ...(f || config), minPresupuestos: parseInt(e.target.value) }))}
+            type="number"
+            min={1}
+            max={5}
+            defaultValue={config.maxPresupuestos ?? 5}
+            onChange={e => setForm((f: any) => ({ ...(f || config), maxPresupuestos: parseInt(e.target.value, 10) }))}
             className="input"
           />
+          <p className="text-xs text-slate-400 mt-1">Tope absoluto: no se pueden cargar más presupuestos que este número (máx. 5).</p>
+        </div>
+        <div>
+          <label className="label">Mínimo de cotizaciones para enviar a Secretaría</label>
+          <input
+            type="number"
+            min={1}
+            max={5}
+            defaultValue={config.minPresupuestos}
+            onChange={e => setForm((f: any) => ({ ...(f || config), minPresupuestos: parseInt(e.target.value, 10) }))}
+            className="input"
+          />
+          <p className="text-xs text-slate-400 mt-1">Debe ser menor o igual al máximo.</p>
         </div>
         <div className="flex items-center gap-3">
           <div
@@ -86,7 +102,11 @@ export function AdminConfigPage() {
 // ── HISTORIAL ─────────────────────────────────────────────────────────
 export function HistorialPage() {
   const navigate = useNavigate();
-  const { data: pedidos = [], isLoading } = useQuery({ queryKey: ['pedidos-todos'], queryFn: () => pedidosApi.getAll() });
+  const { user } = useAuthStore();
+  const { data: pedidos = [], isLoading } = useQuery({
+    queryKey: ['pedidos-todos', user?.rol],
+    queryFn: () => pedidosApi.getAll(),
+  });
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('');
 
@@ -106,7 +126,7 @@ export function HistorialPage() {
         <input value={search} onChange={e => setSearch(e.target.value)} className="input flex-1 min-w-48" placeholder="🔍 Buscar por descripción, área o N°..." />
         <select value={stageFilter} onChange={e => setStageFilter(e.target.value)} className="input w-auto">
           <option value="">Todas las etapas</option>
-          {[1,2,3,4,5,6,7].map(s => <option key={s} value={s}>{stageLabel(s)}</option>)}
+          {[1, 2, 3, 4, 5, 6, 7, 8].map(s => <option key={s} value={s}>{stageLabel(s)}</option>)}
         </select>
       </div>
       <div className="card overflow-hidden">
@@ -125,7 +145,7 @@ export function HistorialPage() {
                   <td className="px-4 py-3 font-mono text-xs text-slate-400">{p.numero}</td>
                   <td className="px-4 py-3 font-semibold">{p.descripcion}{p.urgente && <span className="ml-2 badge badge-red text-xs">URG</span>}</td>
                   <td className="px-4 py-3 text-slate-500">{p.area}</td>
-                  <td className="px-4 py-3"><span className={`badge ${stageBadgeClass(p.stage)}`}>{stageIcon(p.stage)} {stageLabel(p.stage)}</span></td>
+                  <td className="px-4 py-3"><span className={`badge ${stageBadgeClass(p.stage)}`}>{stageIcon(p.stage)} {pedidoEstadoVisibleLabel(p)}</span></td>
                   <td className="px-4 py-3 font-mono text-sm">{formatMoney(p.monto)}</td>
                   <td className="px-4 py-3 text-slate-400">{formatDate(p.createdAt)}</td>
                 </tr>
@@ -141,7 +161,11 @@ export function HistorialPage() {
 // ── TESORERÍA ─────────────────────────────────────────────────────────
 export function TesoreriaPage() {
   const qc = useQueryClient();
-  const { data: pedidos = [] } = useQuery({ queryKey: ['pedidos'], queryFn: () => pedidosApi.getAll() });
+  const { user } = useAuthStore();
+  const { data: pedidos = [] } = useQuery({
+    queryKey: ['pedidos', user?.rol],
+    queryFn: () => pedidosApi.getAll(),
+  });
   const [modal, setModal] = useState<{ pedido: Pedido; action: string } | null>(null);
 
   const pendientes = pedidos.filter(p => p.stage === PedidoStage.GESTION_PAGOS);
@@ -273,7 +297,10 @@ export function AdminPedidosPage() {
     !search || p.descripcion.toLowerCase().includes(search.toLowerCase()) || p.numero.includes(search)
   );
 
-  const byStage = [1,2,3,4,5,6].map(s => ({ stage: s, count: pedidos.filter(p => p.stage === s).length }));
+  const byStage = [1, 2, 3, 4, 5, 6, 7, 8].map((s) => ({
+    stage: s,
+    count: pedidos.filter((p) => p.stage === s).length,
+  }));
 
   return (
     <div className="page-shell space-y-6">
@@ -282,7 +309,7 @@ export function AdminPedidosPage() {
         <h1 className="page-title">Todos los pedidos</h1>
       </div>
 
-      <div className="grid grid-cols-3 md:grid-cols-6 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 md:grid-cols-8 gap-3">
         {byStage.map(({ stage, count }) => (
           <div key={stage} className="stat-card p-3 text-center">
             <div className="text-xl font-black">{count}</div>
@@ -305,8 +332,18 @@ export function AdminPedidosPage() {
                   <td className="px-4 py-3 font-mono text-xs text-slate-400">{p.numero}</td>
                   <td className="px-4 py-3 font-semibold">{p.descripcion}{p.urgente && <span className="ml-1 badge badge-red" style={{fontSize:'9px'}}>URG</span>}</td>
                   <td className="px-4 py-3 text-slate-500 text-xs">{p.area}</td>
-                  <td className="px-4 py-3 text-slate-500 text-xs">{p.stage === 1 || p.stage === 3 ? 'Secretaría' : p.stage === 2 ? 'Compras' : p.stage === 4 ? 'Tesorería' : p.stage === 5 ? 'Admin' : '—'}</td>
-                  <td className="px-4 py-3"><span className={`badge ${stageBadgeClass(p.stage)}`}>{stageIcon(p.stage)} {stageLabel(p.stage)}</span></td>
+                  <td className="px-4 py-3 text-slate-500 text-xs">
+                    {p.stage === 1 || p.stage === 3
+                      ? 'Secretaría'
+                      : p.stage === 2 || p.stage === 4
+                        ? 'Compras'
+                        : p.stage === 5
+                          ? 'Tesorería'
+                          : p.stage === 6
+                            ? 'Admin'
+                            : '—'}
+                  </td>
+                  <td className="px-4 py-3"><span className={`badge ${stageBadgeClass(p.stage)}`}>{stageIcon(p.stage)} {pedidoEstadoVisibleLabel(p)}</span></td>
                   <td className="px-4 py-3 font-mono text-sm">{formatMoney(p.monto)}</td>
                 </tr>
               ))}

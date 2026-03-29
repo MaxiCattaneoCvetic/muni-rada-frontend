@@ -1,7 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import type { Pedido } from '../../types';
 import { STAGE_LABELS, STAGE_AREA, STAGE_ICONS, STAGE_HELP_COPY, PedidoStage } from '../../types';
-import { cn, formatMoney, pedidoNeedsMyAction } from '../../lib/utils';
+import { cn, formatMoney, pedidoNeedsMyAction, ROLE_STAGES, rolLabel, pedidoEstadoVisibleLabel } from '../../lib/utils';
 import { useAuthStore } from '../../store/auth.store';
 import { AlertTriangle, CircleHelp, DollarSign, Lock } from 'lucide-react';
 
@@ -10,46 +11,79 @@ interface Props {
   onPedidoClick: (pedido: Pedido) => void;
   onAction: (pedido: Pedido, action: string) => void;
   visibleStages?: number[];
+  /** Mínimo de presupuestos requeridos para enviar a Secretaría. Default 3. */
+  minPresupuestos?: number;
+  /** Máximo de cotizaciones por pedido (tope). Default 5. */
+  maxPresupuestos?: number;
 }
 
-const STAGES = [1, 2, 3, 4, 5, 6];
+const STAGES = [1, 2, 3, 4, 5, 6, 7, 8];
+/** Acento por sector: Secretaría azul, Compras violeta, Tesorería teal, Suministros celeste, Cierre verde */
 const STAGE_COLOR_MAP: Record<number, string> = {
-  1: 'var(--amber)', 2: 'var(--purple)', 3: 'var(--blue)',
-  4: 'var(--green)', 5: 'var(--amber)', 6: 'var(--green)',
+  1: 'var(--blue-mid)',
+  2: 'var(--purple-mid)',
+  3: 'var(--blue-mid)',
+  4: 'var(--purple-mid)',
+  5: 'var(--teal-mid)',
+  6: 'var(--sky-mid)',
+  7: 'var(--green-mid)',
+  8: 'var(--red-mid)',
 };
 const STAGE_BG_MAP: Record<number, string> = {
-  1: 'linear-gradient(135deg, #fef3c7, #fffbeb)', 
+  1: 'linear-gradient(135deg, #dbeafe, #eff6ff)',
   2: 'linear-gradient(135deg, #ede9fe, #f5f3ff)',
-  3: 'linear-gradient(135deg, #dbeafe, #eff6ff)', 
-  4: 'linear-gradient(135deg, #dcfce7, #f0fdf4)',
-  5: 'linear-gradient(135deg, #fef3c7, #fffbeb)', 
-  6: 'linear-gradient(135deg, #dcfce7, #f0fdf4)',
+  3: 'linear-gradient(135deg, #dbeafe, #eff6ff)',
+  4: 'linear-gradient(135deg, #ede9fe, #f5f3ff)',
+  5: 'linear-gradient(135deg, #ccfbf1, #f0fdfa)',
+  6: 'linear-gradient(135deg, #e0f2fe, #f0f9ff)',
+  7: 'linear-gradient(135deg, #dcfce7, #f0fdf4)',
+  8: 'linear-gradient(135deg, #fee2e2, #fef2f2)',
 };
 const STAGE_BORDER_MAP: Record<number, string> = {
-  1: 'var(--amber-brd)', 2: 'var(--purple-brd)', 3: 'var(--blue-brd)',
-  4: 'var(--green-brd)', 5: 'var(--amber-brd)', 6: 'var(--green-brd)',
+  1: 'var(--blue-brd)',
+  2: 'var(--purple-brd)',
+  3: 'var(--blue-brd)',
+  4: 'var(--purple-brd)',
+  5: 'var(--teal-brd)',
+  6: 'var(--sky-brd)',
+  7: 'var(--green-brd)',
+  8: 'var(--red-brd)',
 };
 
 /** Top accent bar per column */
 const STAGE_TOP_BAR: Record<number, string> = {
-  1: 'linear-gradient(90deg, #d97706, #fbbf24)',
-  2: 'linear-gradient(90deg, #7c3aed, #a78bfa)',
-  3: 'linear-gradient(90deg, #2563eb, #60a5fa)',
-  4: 'linear-gradient(90deg, #15803d, #4ade80)',
-  5: 'linear-gradient(90deg, #d97706, #fbbf24)',
-  6: 'linear-gradient(90deg, #15803d, #22c55e)',
+  1: 'linear-gradient(90deg, #1d4ed8, #60a5fa)',
+  2: 'linear-gradient(90deg, #5b21b6, #a78bfa)',
+  3: 'linear-gradient(90deg, #1d4ed8, #60a5fa)',
+  4: 'linear-gradient(90deg, #5b21b6, #a78bfa)',
+  5: 'linear-gradient(90deg, #0f766e, #2dd4bf)',
+  6: 'linear-gradient(90deg, #0369a1, #38bdf8)',
+  7: 'linear-gradient(90deg, #15803d, #4ade80)',
+  8: 'linear-gradient(90deg, #b91c1c, #f87171)',
 };
 
 const STAGE_GLOW_MAP: Record<number, string> = {
-  1: 'radial-gradient(circle at 100% 0%, rgba(245,158,11,.16) 0%, transparent 58%)',
+  1: 'radial-gradient(circle at 100% 0%, var(--blue-glow) 0%, transparent 58%)',
   2: 'radial-gradient(circle at 100% 0%, rgba(139,92,246,.15) 0%, transparent 58%)',
-  3: 'radial-gradient(circle at 100% 0%, rgba(59,130,246,.16) 0%, transparent 58%)',
-  4: 'radial-gradient(circle at 100% 0%, rgba(34,197,94,.15) 0%, transparent 58%)',
-  5: 'radial-gradient(circle at 100% 0%, rgba(245,158,11,.16) 0%, transparent 58%)',
-  6: 'radial-gradient(circle at 100% 0%, rgba(34,197,94,.15) 0%, transparent 58%)',
+  3: 'radial-gradient(circle at 100% 0%, var(--blue-glow) 0%, transparent 58%)',
+  4: 'radial-gradient(circle at 100% 0%, rgba(139,92,246,.15) 0%, transparent 58%)',
+  5: 'radial-gradient(circle at 100% 0%, var(--teal-glow) 0%, transparent 58%)',
+  6: 'radial-gradient(circle at 100% 0%, var(--sky-glow) 0%, transparent 58%)',
+  7: 'radial-gradient(circle at 100% 0%, rgba(34,197,94,.15) 0%, transparent 58%)',
+  8: 'radial-gradient(circle at 100% 0%, rgba(239,68,68,.12) 0%, transparent 58%)',
 };
 
-function ActionButton({ pedido, rol, onAction }: { pedido: Pedido; rol: string; onAction: (p: Pedido, a: string) => void }) {
+function ActionButton({
+  pedido,
+  rol,
+  onAction,
+  minPresupuestos = 3,
+}: {
+  pedido: Pedido;
+  rol: string;
+  onAction: (p: Pedido, a: string) => void;
+  minPresupuestos?: number;
+}) {
   if (rol === 'secretaria') {
     if (pedido.stage === PedidoStage.APROBACION)
       return (
@@ -70,13 +104,28 @@ function ActionButton({ pedido, rol, onAction }: { pedido: Pedido; rol: string; 
         </button>
       );
   }
-  if (rol === 'compras' && pedido.stage === PedidoStage.PRESUPUESTOS)
+  if (rol === 'compras' && pedido.stage === PedidoStage.PRESUPUESTOS) {
+    const n = pedido.presupuestosCargados ?? 0;
+    const listo = n >= minPresupuestos;
     return (
       <button
         onClick={e => { e.stopPropagation(); onAction(pedido, 'cargar-presupuesto'); }}
+        className={cn(
+          'btn btn-xs w-full justify-center mt-2',
+          listo ? 'btn-success' : 'btn-primary',
+        )}
+      >
+        {listo ? '📤 Enviar a Secretaría' : '📋 Cargar presupuesto'}
+      </button>
+    );
+  }
+  if (rol === 'compras' && pedido.stage === PedidoStage.CARGA_FACTURA)
+    return (
+      <button
+        onClick={e => { e.stopPropagation(); onAction(pedido, 'subir-factura'); }}
         className="btn btn-xs btn-primary w-full justify-center mt-2"
       >
-        📋 Cargar presupuesto
+        📄 Subir factura
       </button>
     );
   if (rol === 'tesoreria' && pedido.stage === PedidoStage.GESTION_PAGOS) {
@@ -110,24 +159,83 @@ function ActionButton({ pedido, rol, onAction }: { pedido: Pedido; rol: string; 
   return null;
 }
 
-export function KanbanBoard({ pedidos, onPedidoClick, onAction, visibleStages }: Props) {
+export function KanbanBoard({
+  pedidos,
+  onPedidoClick,
+  onAction,
+  visibleStages,
+  minPresupuestos = 3,
+  maxPresupuestos = 5,
+}: Props) {
   const { user } = useAuthStore();
   const [onlyMine, setOnlyMine] = useState(false);
+  const [onlyMyAreaStages, setOnlyMyAreaStages] = useState(false);
   const [openHelpStage, setOpenHelpStage] = useState<number | null>(null);
+  const [helpTooltipPos, setHelpTooltipPos] = useState<{ top: number; left: number } | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
-  const stages = visibleStages ?? STAGES;
+  const helpTooltipRef = useRef<HTMLDivElement | null>(null);
+  const stageHelpAnchorRefs = useRef<Record<number, HTMLDivElement | null>>({});
+  const helpLeaveTimerRef = useRef<number | null>(null);
+
+  const stages = useMemo(() => {
+    const base = visibleStages ?? STAGES;
+    if (!onlyMyAreaStages || !user?.rol) return base;
+    const mine = ROLE_STAGES[user.rol];
+    if (!mine?.length) return base;
+    return base.filter((s) => mine.includes(s));
+  }, [visibleStages, onlyMyAreaStages, user?.rol]);
+
+  const clearHelpLeaveTimer = () => {
+    if (helpLeaveTimerRef.current != null) {
+      window.clearTimeout(helpLeaveTimerRef.current);
+      helpLeaveTimerRef.current = null;
+    }
+  };
+
+  const scheduleHelpClose = () => {
+    clearHelpLeaveTimer();
+    helpLeaveTimerRef.current = window.setTimeout(() => {
+      setOpenHelpStage(null);
+      helpLeaveTimerRef.current = null;
+    }, 120);
+  };
 
   const filteredPedidos = onlyMine
     ? pedidos.filter(p => pedidoNeedsMyAction(p.stage, user?.rol || ''))
     : pedidos;
 
+  useLayoutEffect(() => {
+    if (openHelpStage === null) {
+      setHelpTooltipPos(null);
+      return;
+    }
+    const update = () => {
+      const el = stageHelpAnchorRefs.current[openHelpStage];
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      setHelpTooltipPos({ top: rect.bottom + 8, left: rect.left });
+    };
+    update();
+    window.addEventListener('scroll', update, true);
+    window.addEventListener('resize', update);
+    return () => {
+      window.removeEventListener('scroll', update, true);
+      window.removeEventListener('resize', update);
+    };
+  }, [openHelpStage]);
+
+  useEffect(() => {
+    return () => clearHelpLeaveTimer();
+  }, []);
+
   useEffect(() => {
     if (openHelpStage === null) return;
 
     const handlePointerDown = (event: PointerEvent) => {
-      if (!boardRef.current?.contains(event.target as Node)) {
-        setOpenHelpStage(null);
-      }
+      const target = event.target as Node;
+      if (boardRef.current?.contains(target)) return;
+      if (helpTooltipRef.current?.contains(target)) return;
+      setOpenHelpStage(null);
     };
 
     const handleEscape = (event: KeyboardEvent) => {
@@ -153,54 +261,85 @@ export function KanbanBoard({ pedidos, onPedidoClick, onAction, visibleStages }:
           <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--blue-mid)' }} />
           Estado de pedidos
         </div>
-        <label className="flex items-center gap-2.5 cursor-pointer select-none">
-          <div
-            onClick={() => setOnlyMine(v => !v)}
-            className="w-11 h-6 rounded-full relative transition-all cursor-pointer flex-shrink-0"
-            style={{
-              background: onlyMine ? 'var(--gradient-blue)' : 'var(--border2)',
-              boxShadow: 'inset 0 1px 3px rgba(0,0,0,.1)',
-            }}
-          >
-            <div 
-              className="absolute w-[18px] h-[18px] bg-white rounded-full top-[3px] transition-transform"
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+          <label className="flex items-center gap-2.5 cursor-pointer select-none">
+            <div
+              onClick={() => setOnlyMine(v => !v)}
+              className="w-11 h-6 rounded-full relative transition-all cursor-pointer flex-shrink-0"
               style={{
-                left: onlyMine ? 'calc(100% - 21px)' : '3px',
-                boxShadow: '0 1px 4px rgba(0,0,0,.25)',
+                background: onlyMine ? 'var(--gradient-blue)' : 'var(--border2)',
+                boxShadow: 'inset 0 1px 3px rgba(0,0,0,.1)',
               }}
-            />
-          </div>
-          <span 
-            className="font-semibold"
-            style={{ 
-              fontSize: '12px', 
-              color: onlyMine ? 'var(--blue)' : 'var(--text3)',
-            }}
-          >
-            Solo mis pendientes
-          </span>
-        </label>
+            >
+              <div 
+                className="absolute w-[18px] h-[18px] bg-white rounded-full top-[3px] transition-transform"
+                style={{
+                  left: onlyMine ? 'calc(100% - 21px)' : '3px',
+                  boxShadow: '0 1px 4px rgba(0,0,0,.25)',
+                }}
+              />
+            </div>
+            <span 
+              className="font-semibold"
+              style={{ 
+                fontSize: '12px', 
+                color: onlyMine ? 'var(--blue)' : 'var(--text3)',
+              }}
+            >
+              Solo mis pendientes
+            </span>
+          </label>
+          {user?.rol && user.rol !== 'admin' && (
+            <label
+              className="flex items-center gap-2.5 cursor-pointer select-none"
+              title={`Etapas donde participa ${rolLabel(user.rol)}: ${ROLE_STAGES[user.rol]?.join(', ') ?? ''}`}
+            >
+              <div
+                onClick={() => setOnlyMyAreaStages(v => !v)}
+                className="w-11 h-6 rounded-full relative transition-all cursor-pointer flex-shrink-0"
+                style={{
+                  background: onlyMyAreaStages ? 'var(--gradient-blue)' : 'var(--border2)',
+                  boxShadow: 'inset 0 1px 3px rgba(0,0,0,.1)',
+                }}
+              >
+                <div 
+                  className="absolute w-[18px] h-[18px] bg-white rounded-full top-[3px] transition-transform"
+                  style={{
+                    left: onlyMyAreaStages ? 'calc(100% - 21px)' : '3px',
+                    boxShadow: '0 1px 4px rgba(0,0,0,.25)',
+                  }}
+                />
+              </div>
+              <span 
+                className="font-semibold"
+                style={{ 
+                  fontSize: '12px', 
+                  color: onlyMyAreaStages ? 'var(--blue)' : 'var(--text3)',
+                }}
+              >
+                Solo etapas de mi área
+              </span>
+            </label>
+          )}
+        </div>
       </div>
 
       {/* Kanban grid */}
-      <div className="grid grid-flow-col auto-cols-[minmax(280px,1fr)] gap-4 overflow-x-auto pb-2 snap-x snap-mandatory xl:grid-flow-row xl:auto-cols-auto xl:grid-cols-3 2xl:grid-cols-6 xl:overflow-visible">
+      <div className="grid grid-flow-col auto-cols-[minmax(280px,1fr)] gap-4 overflow-x-auto pb-2 snap-x snap-mandatory xl:grid-flow-row xl:auto-cols-auto xl:grid-cols-4 2xl:grid-cols-8 xl:overflow-visible">
         {stages.map(stage => {
           const items = filteredPedidos.filter(p => p.stage === stage);
           const isMineStage = !!user?.rol && items.some(p => pedidoNeedsMyAction(p.stage, user.rol));
           return (
             <div 
               key={stage} 
-              className="card relative min-h-[250px] min-w-0 snap-start overflow-visible flex flex-col"
+              className="card relative min-h-[250px] min-w-0 snap-start overflow-hidden flex flex-col"
               style={{
                 background: 'var(--gradient-card)',
-                border: isMineStage
-                  ? '1px solid rgba(59,130,246,.22)'
-                  : '1px solid rgba(148,163,184,.18)',
-                borderRadius: 'var(--r3)',
+                borderColor: STAGE_BORDER_MAP[stage],
                 boxShadow: isMineStage
                   ? '0 10px 24px rgba(15,23,42,.10), 0 20px 48px rgba(59,130,246,.12)'
-                  : '0 10px 26px rgba(15,23,42,.08), 0 2px 8px rgba(15,23,42,.04)',
-                zIndex: openHelpStage === stage ? 80 : 1,
+                  : 'var(--shadow)',
+                zIndex: 1,
               }}
             >
               <div
@@ -208,16 +347,15 @@ export function KanbanBoard({ pedidos, onPedidoClick, onAction, visibleStages }:
                 style={{ background: STAGE_GLOW_MAP[stage] }}
               />
               <div
-                className="absolute inset-x-0 top-0 z-20 h-1.5"
+                className="pointer-events-none absolute inset-x-0 top-0 z-20 h-1.5"
                 style={{ background: STAGE_TOP_BAR[stage] }}
               />
               {/* Column header */}
               <div 
-                className="relative px-4 pb-3.5 pt-5 border-b"
+                className="relative z-10 px-4 pb-3.5 pt-5 border-b"
                 style={{
                   background: STAGE_BG_MAP[stage],
                   borderBottom: `1px solid ${STAGE_BORDER_MAP[stage]}`,
-                  zIndex: openHelpStage === stage ? 140 : 10,
                 }}
               >
                 <div className="flex items-start justify-between gap-1">
@@ -247,9 +385,15 @@ export function KanbanBoard({ pedidos, onPedidoClick, onAction, visibleStages }:
                           {STAGE_LABELS[stage]}
                         </div>
                         <div
+                          ref={(el) => {
+                            stageHelpAnchorRefs.current[stage] = el;
+                          }}
                           className="relative mt-[1px] shrink-0"
-                          onMouseEnter={() => setOpenHelpStage(stage)}
-                          onMouseLeave={() => setOpenHelpStage((current) => (current === stage ? null : current))}
+                          onMouseEnter={() => {
+                            clearHelpLeaveTimer();
+                            setOpenHelpStage(stage);
+                          }}
+                          onMouseLeave={scheduleHelpClose}
                         >
                           <button
                             type="button"
@@ -260,8 +404,16 @@ export function KanbanBoard({ pedidos, onPedidoClick, onAction, visibleStages }:
                               e.stopPropagation();
                               setOpenHelpStage((current) => (current === stage ? null : stage));
                             }}
-                            onFocus={() => setOpenHelpStage(stage)}
-                            onBlur={() => setOpenHelpStage((current) => (current === stage ? null : current))}
+                            onFocus={() => {
+                              clearHelpLeaveTimer();
+                              setOpenHelpStage(stage);
+                            }}
+                            onBlur={() => {
+                              window.setTimeout(() => {
+                                if (helpTooltipRef.current?.matches(':hover')) return;
+                                setOpenHelpStage((current) => (current === stage ? null : current));
+                              }, 150);
+                            }}
                             className="flex h-[18px] w-[18px] items-center justify-center rounded-full transition-colors"
                             style={{
                               background: openHelpStage === stage ? 'rgba(255,255,255,.8)' : 'rgba(255,255,255,.48)',
@@ -271,23 +423,6 @@ export function KanbanBoard({ pedidos, onPedidoClick, onAction, visibleStages }:
                           >
                             <CircleHelp size={12} strokeWidth={2.2} />
                           </button>
-                          {openHelpStage === stage && (
-                            <div
-                              id={`stage-help-${stage}`}
-                              role="tooltip"
-                              className="absolute left-0 top-full z-[120] mt-2 w-[220px] rounded-[12px] p-3"
-                              style={{
-                                background: 'rgba(15,23,42,.96)',
-                                color: 'rgba(255,255,255,.9)',
-                                boxShadow: '0 14px 32px rgba(15,23,42,.28)',
-                                border: '1px solid rgba(255,255,255,.08)',
-                                fontSize: '11px',
-                                lineHeight: 1.45,
-                              }}
-                            >
-                              {STAGE_HELP_COPY[stage]}
-                            </div>
-                          )}
                         </div>
                       </div>
                       {STAGE_AREA[stage] !== '—' && (
@@ -403,6 +538,11 @@ export function KanbanBoard({ pedidos, onPedidoClick, onAction, visibleStages }:
                       >
                         {p.descripcion}
                       </div>
+                      {p.stage === PedidoStage.RECHAZADO && (
+                        <div className="mb-1 text-[10px] font-bold leading-tight text-red-700 line-clamp-2">
+                          {pedidoEstadoVisibleLabel(p)}
+                        </div>
+                      )}
                       <div 
                         className="mb-1.5"
                         style={{ fontSize: '11px', color: 'var(--text2)' }}
@@ -419,8 +559,26 @@ export function KanbanBoard({ pedidos, onPedidoClick, onAction, visibleStages }:
                         {p.bloqueado && (
                           <span className="badge badge-red" style={{ fontSize: '9px' }}>🔒 Bloqueado</span>
                         )}
+                        {p.stage === PedidoStage.PRESUPUESTOS && (
+                          <span
+                            className="badge gap-0.5 font-mono font-bold"
+                            style={{
+                              fontSize: '9px',
+                              background: (p.presupuestosCargados ?? 0) >= minPresupuestos
+                                ? 'rgba(34,197,94,.14)'
+                                : 'rgba(139,92,246,.12)',
+                              color: (p.presupuestosCargados ?? 0) >= minPresupuestos
+                                ? '#15803d'
+                                : 'var(--purple-mid)',
+                              border: `1px solid ${(p.presupuestosCargados ?? 0) >= minPresupuestos ? 'rgba(34,197,94,.35)' : 'rgba(139,92,246,.28)'}`,
+                            }}
+                            title={`Cargados / máximo (${minPresupuestos} mínimo para enviar)`}
+                          >
+                            {p.presupuestosCargados ?? 0}/{maxPresupuestos}
+                          </span>
+                        )}
                       </div>
-                      <ActionButton pedido={p} rol={user?.rol || ''} onAction={onAction} />
+                      <ActionButton pedido={p} rol={user?.rol || ''} onAction={onAction} minPresupuestos={minPresupuestos} />
                     </div>
                   );
                 })}
@@ -429,6 +587,32 @@ export function KanbanBoard({ pedidos, onPedidoClick, onAction, visibleStages }:
           );
         })}
       </div>
+
+      {openHelpStage !== null &&
+        helpTooltipPos != null &&
+        createPortal(
+          <div
+            ref={helpTooltipRef}
+            id={`stage-help-${openHelpStage}`}
+            role="tooltip"
+            className="fixed z-[250] w-[min(220px,calc(100vw-16px))] rounded-[12px] p-3"
+            style={{
+              top: helpTooltipPos.top,
+              left: Math.max(8, Math.min(helpTooltipPos.left, window.innerWidth - 220 - 8)),
+              background: 'rgba(15,23,42,.96)',
+              color: 'rgba(255,255,255,.9)',
+              boxShadow: '0 14px 32px rgba(15,23,42,.28)',
+              border: '1px solid rgba(255,255,255,.08)',
+              fontSize: '11px',
+              lineHeight: 1.45,
+            }}
+            onMouseEnter={clearHelpLeaveTimer}
+            onMouseLeave={scheduleHelpClose}
+          >
+            {STAGE_HELP_COPY[openHelpStage]}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

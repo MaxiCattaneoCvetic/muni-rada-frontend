@@ -15,6 +15,9 @@ import {
   TesoreriaPage, HistorialPage, AdminConfigPage, AdminPedidosPage, FacturasPage,
 } from './pages/admin/AdminPages';
 import { AdminUsuariosPage } from './pages/admin/AdminUsuariosPage';
+import { ProveedoresListPage } from './pages/proveedores/ProveedoresListPage';
+import { ProveedorDetallePage } from './pages/proveedores/ProveedorDetallePage';
+import { ProveedorAltaWizardPage } from './pages/proveedores/ProveedorAltaWizardPage';
 
 const qc = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 10000 } },
@@ -38,6 +41,15 @@ function AppInner() {
         <Guard roles={['compras', 'admin']}><PresupuestosPage /></Guard>
       } />
       <Route path="/presupuestos/:pedidoId" element={<PresupuestosPage />} />
+      <Route path="/proveedores" element={
+        <Guard roles={['compras', 'secretaria', 'admin']}><ProveedoresListPage /></Guard>
+      } />
+      <Route path="/proveedores/nuevo" element={
+        <Guard roles={['compras', 'secretaria', 'admin']}><ProveedorAltaWizardPage /></Guard>
+      } />
+      <Route path="/proveedores/:id" element={
+        <Guard roles={['compras', 'secretaria', 'admin']}><ProveedorDetallePage /></Guard>
+      } />
       <Route path="/historial" element={<HistorialPage />} />
       <Route path="/aprobar" element={<DashboardPage mode="aprobar" />} />
       <Route path="/firmar" element={<DashboardPage mode="firmar" />} />
