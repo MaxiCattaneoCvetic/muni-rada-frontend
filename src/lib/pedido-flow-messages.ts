@@ -24,7 +24,7 @@ export function isViewerOwnerOfStage(rol: UserRole | undefined, stage: number): 
       return rol === 'tesoreria';
     case PedidoStage.ESPERANDO_SUMINISTROS:
     case PedidoStage.SUMINISTROS_LISTOS:
-      return rol === 'admin';
+      return false;
     default:
       return false;
   }
