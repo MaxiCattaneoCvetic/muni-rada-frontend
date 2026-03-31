@@ -1,0 +1,17 @@
+server {
+    listen ${PORT};
+    server_name _;
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # SPA routing - all paths go to index.html ($$ escapes $ for envsubst → nginx sees $uri)
+    location / {
+        try_files $$uri $$uri/ /index.html;
+    }
+
+    # API proxy intentionally omitted for cloud deploys.
+    # Frontend must call backend using VITE_API_URL.
+
+    gzip on;
+    gzip_types text/plain text/css application/json application/javascript text/xml application/xml;
+}
