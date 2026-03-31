@@ -3,6 +3,12 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm install
 COPY . .
+# Vite inyecta import.meta.env solo en build; Railway debe pasar estas vars al paso "docker build"
+# (en Variables: disponibles en Build; o coinciden con estos ARG).
+ARG VITE_API_URL
+ARG VITE_DEMO_MODE
+ENV VITE_API_URL=$VITE_API_URL
+ENV VITE_DEMO_MODE=$VITE_DEMO_MODE
 RUN npm run build
 
 FROM nginx:alpine
