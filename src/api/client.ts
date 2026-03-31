@@ -1,13 +1,10 @@
 import axios from 'axios';
 import { demoLoginPath } from '../lib/demo';
 
-/** En desarrollo, `/api` pasa por el proxy de Vite al backend (evita CORS y URLs rotas). */
+/** Base URL centralizada para toda la API (inyectada por Vite). */
 function resolveBaseURL(): string {
   const raw = import.meta.env.VITE_API_URL;
-  if (raw != null && String(raw).trim() !== '') {
-    return String(raw).replace(/\/$/, '');
-  }
-  return '/api';
+  return String(raw).trim().replace(/\/$/, '');
 }
 
 const api = axios.create({
