@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { proveedoresApi } from '../../api/services';
+import { ButtonSpinner, RadaTillyLoader } from '../../components/ui/loading';
 import { formatDate, formatDateTime, formatMoney } from '../../lib/utils';
 import { ArrowLeft, ExternalLink, FileText, MessageSquare, UserCircle } from 'lucide-react';
 
@@ -50,7 +51,7 @@ export function ProveedorDetallePage() {
   if (isLoading) {
     return (
       <div className="page-shell-form">
-        <p className="text-center text-slate-400 py-12">Cargando…</p>
+        <RadaTillyLoader variant="contained" label="Cargando proveedor" />
       </div>
     );
   }
@@ -261,7 +262,7 @@ export function ProveedorDetallePage() {
               disabled={!nuevoComentario.trim() || addMut.isPending}
               onClick={() => addMut.mutate()}
             >
-              {addMut.isPending ? 'Guardando…' : 'Publicar comentario'}
+              {addMut.isPending ? <ButtonSpinner label="Guardando" /> : 'Publicar comentario'}
             </button>
             {addMut.isError && (
               <p className="text-sm text-red-600 mt-2">No se pudo guardar. Intentá de nuevo.</p>

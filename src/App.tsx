@@ -18,6 +18,9 @@ import { AdminUsuariosPage } from './pages/admin/AdminUsuariosPage';
 import { ProveedoresListPage } from './pages/proveedores/ProveedoresListPage';
 import { ProveedorDetallePage } from './pages/proveedores/ProveedorDetallePage';
 import { ProveedorAltaWizardPage } from './pages/proveedores/ProveedorAltaWizardPage';
+import { FinanzasPage } from './pages/finanzas/FinanzasPage';
+import { AdminReportesPage } from './pages/admin/AdminReportesPage';
+import { MisReportesPage } from './pages/reportes/MisReportesPage';
 
 const qc = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 10000 } },
@@ -59,6 +62,9 @@ function AppInner() {
       <Route path="/facturas" element={
         <Guard roles={['tesoreria', 'admin']}><FacturasPage /></Guard>
       } />
+      <Route path="/finanzas" element={
+        <Guard roles={['tesoreria', 'admin']}><FinanzasPage /></Guard>
+      } />
       <Route path="/admin/pedidos" element={
         <Guard roles={['admin']}><AdminPedidosPage /></Guard>
       } />
@@ -69,8 +75,9 @@ function AppInner() {
         <Guard roles={['admin']}><AdminConfigPage /></Guard>
       } />
       <Route path="/admin/reportes" element={
-        <Guard roles={['admin']}><AdminPedidosPage /></Guard>
+        <Guard roles={['admin']}><AdminReportesPage /></Guard>
       } />
+      <Route path="/mis-reportes" element={<MisReportesPage />} />
       <Route path="/" element={<Navigate to="/dashboard" replace />} />
       <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>

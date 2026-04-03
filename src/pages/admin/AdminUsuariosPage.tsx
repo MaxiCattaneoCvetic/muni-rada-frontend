@@ -1,8 +1,10 @@
 import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { usersApi } from '../../api/services';
+import { ButtonSpinner, RadaTillyLoader } from '../../components/ui/loading';
 import { rolLabel, rolBadgeClass, getInitials } from '../../lib/utils';
 import { useAuthStore } from '../../store/auth.store';
+import { Pagination, usePagination } from '../../components/ui/Pagination';
 import type { User, AreaMunicipal } from '../../types';
 import { AREAS } from '../../types';
 import { UserPlus, RefreshCw, Power, PowerOff, Pencil, ChevronLeft, ChevronRight, Check, X } from 'lucide-react';
@@ -34,6 +36,7 @@ export function AdminUsuariosPage() {
   const qc = useQueryClient();
   const { user: currentUser, updateUser } = useAuthStore();
   const { data: users = [], isLoading } = useQuery({ queryKey: ['users'], queryFn: usersApi.getAll });
+  const [usersPage, setUsersPage] = useState(1);
   const [showForm, setShowForm] = useState(false);
   const [createStep, setCreateStep] = useState(1);
   const [resetId, setResetId] = useState<string | null>(null);
@@ -51,6 +54,13 @@ export function AdminUsuariosPage() {
   const [error, setError] = useState('');
   const [editUser, setEditUser] = useState<User | null>(null);
   const [editForm, setEditForm] = useState<EditFormState | null>(null);
+
+  const { page: usersSafePage, totalPages: usersTotalPages, start: usersStart, end: usersEnd } = usePagination({
+    total: users.length,
+    pageSize: 15,
+    page: usersPage,
+    setPage: setUsersPage,
+  });
 
   const syncCurrentUserIfNeeded = async (updatedId: string) => {
     if (currentUser?.id !== updatedId) return;
@@ -392,7 +402,7 @@ export function AdminUsuariosPage() {
                 disabled={createMut.isPending}
                 className="btn btn-primary gap-1 flex-1 min-w-[120px] justify-center"
               >
-                {createMut.isPending ? 'Creando...' : (
+                {createMut.isPending ? <ButtonSpinner label="Creando" /> : (
                   <>
                     <Check size={18} /> Crear usuario
                   </>
@@ -430,7 +440,7 @@ export function AdminUsuariosPage() {
                 disabled={resetMut.isPending}
                 className="btn btn-warning flex-1 justify-center"
               >
-                {resetMut.isPending ? '...' : 'Blanquear'}
+                {resetMut.isPending ? <ButtonSpinner label="Blanqueando" /> : 'Blanquear'}
               </button>
             </div>
           </div>
@@ -567,7 +577,7 @@ export function AdminUsuariosPage() {
                 disabled={updateMut.isPending}
                 className="btn btn-primary flex-1 justify-center"
               >
-                {updateMut.isPending ? 'Guardando...' : 'Guardar'}
+                {updateMut.isPending ? <ButtonSpinner label="Guardando" /> : 'Guardar'}
               </button>
             </div>
           </div>
@@ -576,10 +586,10 @@ export function AdminUsuariosPage() {
 
       <div className="card overflow-hidden">
         {isLoading ? (
-          <div className="p-8 text-center text-slate-400">Cargando usuarios...</div>
+          <RadaTillyLoader variant="contained" label="Cargando usuarios" />
         ) : (
           <div className="divide-y divide-slate-100">
-            {users.map((u) => (
+            {users.slice(usersStart, usersEnd).map((u) => (
               <div
                 key={u.id}
                 className={`flex flex-wrap items-center gap-4 px-6 py-4 ${!u.isActive ? 'opacity-50 bg-slate-50' : ''}`}
@@ -634,6 +644,15 @@ export function AdminUsuariosPage() {
           </div>
         )}
       </div>
+      <Pagination
+        page={usersSafePage}
+        totalPages={usersTotalPages}
+        total={users.length}
+        start={usersStart}
+        end={usersEnd}
+        onPage={setUsersPage}
+        itemLabel="usuarios"
+      />
     </div>
   );
 }

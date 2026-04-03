@@ -5,8 +5,10 @@ import { pedidosApi, presupuestosApi, configApi } from '../../api/services';
 import type { Pedido, Presupuesto } from '../../types';
 import { PedidoStage } from '../../types';
 import { formatMoney, formatDate } from '../../lib/utils';
+import { ButtonSpinner, RadaTillyLoader } from '../ui/loading';
 import { PresupuestoCargaModal } from './PresupuestoCargaModal';
 import { PresupuestoDetalleModal } from './PresupuestoDetalleModal';
+import { StepSuccessModal } from '../ui/StepSuccessModal';
 import { Trash2, Plus, Send } from 'lucide-react';
 
 function formatApiError(e: unknown): string {
@@ -64,6 +66,7 @@ export function PedidoPresupuestosComprasPanel({
   const [showCargaModal, setShowCargaModal] = useState(false);
   const [error, setError] = useState('');
   const [detalle, setDetalle] = useState<Presupuesto | null>(null);
+  const [showSuccess, setShowSuccess] = useState(false);
 
   const delMut = useMutation({
     mutationFn: (id: string) => presupuestosApi.delete(pedidoId, id),
@@ -79,7 +82,7 @@ export function PedidoPresupuestosComprasPanel({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['presupuestos', pedidoId] });
       invalidatePedidosEnTodasLasVistas(qc, pedidoId);
-      onEnviarFirmaSuccess?.();
+      setShowSuccess(true);
     },
     onError: (e) => setError(formatApiError(e)),
   });
@@ -88,7 +91,25 @@ export function PedidoPresupuestosComprasPanel({
   const wrongStage = pedido && pedido.stage !== PedidoStage.PRESUPUESTOS;
 
   if (!pedido) {
-    return <div className="card p-6 text-center text-slate-400">Cargando…</div>;
+    return <RadaTillyLoader variant="contained" label="Cargando cotizaciones" />;
+  }
+
+  if (showSuccess) {
+    return (
+      <StepSuccessModal
+        theme="green"
+        title="¡Cotizaciones enviadas a Secretaría!"
+        nextStep="Secretaría revisará los presupuestos y firmará el elegido."
+        nextStepSub="Una vez firmado, el expediente avanza a Compras para la carga de la factura del proveedor."
+        pedidoNumero={pedido.numero}
+        pedidoDescripcion={pedido.descripcion}
+        urgenteNote={pedido.urgente ? 'Pedido urgente — Secretaría verá este expediente con prioridad.' : undefined}
+        onDismiss={() => {
+          setShowSuccess(false);
+          onEnviarFirmaSuccess?.();
+        }}
+      />
+    );
   }
 
   if (wrongStage) {
@@ -116,7 +137,7 @@ export function PedidoPresupuestosComprasPanel({
                 disabled={enviarMut.isPending}
                 className="btn btn-success gap-2 shrink-0"
               >
-                <Send size={15} /> Enviar a Secretaría
+                {enviarMut.isPending ? <ButtonSpinner label="Enviando" /> : <><Send size={15} /> Enviar a Secretaría</>}
               </button>
             )}
           </div>
@@ -148,7 +169,7 @@ export function PedidoPresupuestosComprasPanel({
               disabled={enviarMut.isPending}
               className="btn btn-success btn-sm gap-2"
             >
-              <Send size={15} /> Enviar a Secretaría
+              {enviarMut.isPending ? <ButtonSpinner label="Enviando" /> : <><Send size={15} /> Enviar a Secretaría</>}
             </button>
           )}
           {error && <div className="w-full text-sm text-red-600">{error}</div>}

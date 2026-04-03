@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { proveedoresApi, presupuestosApi } from '../../api/services';
 import { X, Building2 } from 'lucide-react';
+import { ButtonSpinner } from '../ui/loading';
 
 const NUEVO_VALUE = '__nuevo__';
 
@@ -339,7 +340,7 @@ export function PresupuestoCargaModal({
             Cancelar
           </button>
           <button type="button" className="btn btn-primary gap-1" disabled={saving} onClick={handleGuardar}>
-            {saving ? 'Guardando…' : '✅ Guardar cotización'}
+            {saving ? <ButtonSpinner label="Guardando" /> : '✅ Guardar cotización'}
           </button>
         </div>
       </div>

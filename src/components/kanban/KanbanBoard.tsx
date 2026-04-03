@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import type { Pedido } from '../../types';
 import { STAGE_LABELS, STAGE_AREA, STAGE_ICONS, STAGE_HELP_COPY, PedidoStage } from '../../types';
-import { cn, formatMoney, pedidoNeedsMyAction, ROLE_STAGES, rolLabel, pedidoEstadoVisibleLabel } from '../../lib/utils';
+import { cn, formatMoney, pedidoNeedsMyAction, ROLE_STAGES, ROLE_VISIBLE_STAGES, rolLabel, pedidoEstadoVisibleLabel } from '../../lib/utils';
 import { useAuthStore } from '../../store/auth.store';
 import { AlertTriangle, CircleHelp, DollarSign, Lock } from 'lucide-react';
 
@@ -89,7 +89,7 @@ function ActionButton({
       return (
         <button
           onClick={e => { e.stopPropagation(); onAction(pedido, pedido.urgente ? 'aprobar-urgente' : 'aprobar'); }}
-          className={cn('btn btn-xs w-full justify-center mt-2', pedido.urgente ? 'btn-danger' : 'btn-primary')}
+          className={cn('btn btn-xs w-full justify-center', pedido.urgente ? 'btn-danger' : 'btn-primary')}
         >
           {pedido.urgente ? '🚨 Aprobar ahora' : '✅ Aprobar pedido'}
         </button>
@@ -98,7 +98,7 @@ function ActionButton({
       return (
         <button
           onClick={e => { e.stopPropagation(); onAction(pedido, 'firmar'); }}
-          className="btn btn-xs btn-primary w-full justify-center mt-2"
+          className="btn btn-xs btn-primary w-full justify-center"
         >
           ✍️ Firmar presupuesto
         </button>
@@ -111,7 +111,7 @@ function ActionButton({
       <button
         onClick={e => { e.stopPropagation(); onAction(pedido, 'cargar-presupuesto'); }}
         className={cn(
-          'btn btn-xs w-full justify-center mt-2',
+          'btn btn-xs w-full justify-center',
           listo ? 'btn-success' : 'btn-primary',
         )}
       >
@@ -123,7 +123,7 @@ function ActionButton({
     return (
       <button
         onClick={e => { e.stopPropagation(); onAction(pedido, 'subir-factura'); }}
-        className="btn btn-xs btn-primary w-full justify-center mt-2"
+        className="btn btn-xs btn-primary w-full justify-center"
       >
         📄 Subir factura
       </button>
@@ -133,7 +133,7 @@ function ActionButton({
       return (
         <button
           onClick={e => { e.stopPropagation(); onAction(pedido, 'sellado'); }}
-          className="btn btn-xs btn-danger w-full justify-center mt-2"
+          className="btn btn-xs btn-danger w-full justify-center"
         >
           🔒 Registrar sellado
         </button>
@@ -141,7 +141,7 @@ function ActionButton({
     return (
       <button
         onClick={e => { e.stopPropagation(); onAction(pedido, 'pago'); }}
-        className="btn btn-xs btn-success w-full justify-center mt-2"
+        className="btn btn-xs btn-success w-full justify-center"
       >
         💳 Registrar pago
       </button>
@@ -151,12 +151,77 @@ function ActionButton({
     return (
       <button
         onClick={e => { e.stopPropagation(); onAction(pedido, 'confirmar-recepcion'); }}
-        className="btn btn-xs btn-success w-full justify-center mt-2"
+        className="btn btn-xs btn-success w-full justify-center"
       >
         📦 Confirmar recepción
       </button>
     );
   return null;
+}
+
+function FechaLimiteBadge({ fecha }: { fecha: string }) {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const due = new Date(fecha + 'T00:00:00');
+  const diffDays = Math.round((due.getTime() - today.getTime()) / 86_400_000);
+
+  let label: string;
+  let bg: string;
+  let color: string;
+  let border: string;
+
+  if (diffDays < 0) {
+    label = `Vencido hace ${Math.abs(diffDays)}d`;
+    bg = 'var(--red-lt)'; color = 'var(--red)'; border = 'var(--red-brd)';
+  } else if (diffDays === 0) {
+    label = 'Vence hoy';
+    bg = 'var(--red-lt)'; color = 'var(--red)'; border = 'var(--red-brd)';
+  } else if (diffDays <= 3) {
+    label = `Vence en ${diffDays}d`;
+    bg = 'var(--amber-lt)'; color = 'var(--amber)'; border = 'var(--amber-brd)';
+  } else {
+    label = `Límite: ${diffDays}d`;
+    bg = 'var(--teal-lt)'; color = 'var(--teal)'; border = 'var(--teal-brd)';
+  }
+
+  return (
+    <span
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        gap: '3px',
+        fontSize: '9px',
+        fontWeight: 700,
+        padding: '2px 6px',
+        borderRadius: '999px',
+        background: bg,
+        color,
+        border: `1px solid ${border}`,
+        letterSpacing: '.02em',
+      }}
+    >
+      🗓 {label}
+    </span>
+  );
+}
+
+function CardAge({ createdAt }: { createdAt: string }) {
+  const days = Math.floor((Date.now() - new Date(createdAt).getTime()) / 86_400_000);
+  const label = days === 0 ? 'hoy' : days === 1 ? '1d' : `${days}d`;
+  const color =
+    days >= 7 ? 'var(--red-mid)' : days >= 3 ? 'var(--amber-mid)' : 'var(--text3)';
+  return (
+    <span
+      style={{
+        fontSize: '10px',
+        color,
+        fontVariantNumeric: 'tabular-nums',
+        fontFamily: 'var(--font-mono, monospace)',
+      }}
+    >
+      {label}
+    </span>
+  );
 }
 
 export function KanbanBoard({
@@ -170,6 +235,12 @@ export function KanbanBoard({
   const { user } = useAuthStore();
   const [onlyMine, setOnlyMine] = useState(false);
   const [onlyMyAreaStages, setOnlyMyAreaStages] = useState(false);
+  const [showListos, setShowListos] = useState(() =>
+    localStorage.getItem('kanban_show_listos') !== 'false',
+  );
+  const [showRechazados, setShowRechazados] = useState(() =>
+    localStorage.getItem('kanban_show_rechazados') !== 'false',
+  );
   const [openHelpStage, setOpenHelpStage] = useState<number | null>(null);
   const [helpTooltipPos, setHelpTooltipPos] = useState<{ top: number; left: number } | null>(null);
   const boardRef = useRef<HTMLDivElement | null>(null);
@@ -178,12 +249,14 @@ export function KanbanBoard({
   const helpLeaveTimerRef = useRef<number | null>(null);
 
   const stages = useMemo(() => {
-    const base = visibleStages ?? STAGES;
+    let base = visibleStages ?? STAGES;
+    if (!showListos) base = base.filter(s => s !== 7);
+    if (!showRechazados) base = base.filter(s => s !== 8);
     if (!onlyMyAreaStages || !user?.rol) return base;
-    const mine = ROLE_STAGES[user.rol];
+    const mine = ROLE_VISIBLE_STAGES[user.rol] ?? ROLE_STAGES[user.rol];
     if (!mine?.length) return base;
     return base.filter((s) => mine.includes(s));
-  }, [visibleStages, onlyMyAreaStages, user?.rol]);
+  }, [visibleStages, onlyMyAreaStages, user?.rol, showListos, showRechazados]);
 
   const clearHelpLeaveTimer = () => {
     if (helpLeaveTimerRef.current != null) {
@@ -254,12 +327,19 @@ export function KanbanBoard({
     <div ref={boardRef} className="space-y-4">
       {/* Header */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div 
-          className="flex items-center gap-2 uppercase font-bold"
-          style={{ fontSize: '11px', color: 'var(--text3)', letterSpacing: '.5px' }}
-        >
-          <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--blue-mid)' }} />
-          Estado de pedidos
+        <div className="flex items-center gap-2">
+          <div
+            className="flex items-center gap-2 uppercase font-bold"
+            style={{ fontSize: '11px', color: 'var(--text3)', letterSpacing: '.5px' }}
+          >
+            <div className="w-1.5 h-1.5 rounded-full" style={{ background: 'var(--blue-mid)' }} />
+            Estado de pedidos
+          </div>
+          {filteredPedidos.length > 0 && (
+            <span className="badge badge-slate" style={{ fontSize: '10px' }}>
+              {filteredPedidos.length} {filteredPedidos.length === 1 ? 'pedido' : 'pedidos'}
+            </span>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
           <label className="flex items-center gap-2.5 cursor-pointer select-none">
@@ -271,7 +351,7 @@ export function KanbanBoard({
                 boxShadow: 'inset 0 1px 3px rgba(0,0,0,.1)',
               }}
             >
-              <div 
+              <div
                 className="absolute w-[18px] h-[18px] bg-white rounded-full top-[3px] transition-transform"
                 style={{
                   left: onlyMine ? 'calc(100% - 21px)' : '3px',
@@ -279,10 +359,10 @@ export function KanbanBoard({
                 }}
               />
             </div>
-            <span 
+            <span
               className="font-semibold"
-              style={{ 
-                fontSize: '12px', 
+              style={{
+                fontSize: '12px',
                 color: onlyMine ? 'var(--blue)' : 'var(--text3)',
               }}
             >
@@ -292,7 +372,7 @@ export function KanbanBoard({
           {user?.rol && user.rol !== 'admin' && (
             <label
               className="flex items-center gap-2.5 cursor-pointer select-none"
-              title={`Etapas donde participa ${rolLabel(user.rol)}: ${ROLE_STAGES[user.rol]?.join(', ') ?? ''}`}
+              title={`Etapas visibles para ${rolLabel(user.rol)}: ${(ROLE_VISIBLE_STAGES[user.rol] ?? ROLE_STAGES[user.rol])?.join(', ') ?? ''}`}
             >
               <div
                 onClick={() => setOnlyMyAreaStages(v => !v)}
@@ -302,7 +382,7 @@ export function KanbanBoard({
                   boxShadow: 'inset 0 1px 3px rgba(0,0,0,.1)',
                 }}
               >
-                <div 
+                <div
                   className="absolute w-[18px] h-[18px] bg-white rounded-full top-[3px] transition-transform"
                   style={{
                     left: onlyMyAreaStages ? 'calc(100% - 21px)' : '3px',
@@ -310,10 +390,10 @@ export function KanbanBoard({
                   }}
                 />
               </div>
-              <span 
+              <span
                 className="font-semibold"
-                style={{ 
-                  fontSize: '12px', 
+                style={{
+                  fontSize: '12px',
                   color: onlyMyAreaStages ? 'var(--blue)' : 'var(--text3)',
                 }}
               >
@@ -321,17 +401,90 @@ export function KanbanBoard({
               </span>
             </label>
           )}
+
+          {/* Column visibility divider */}
+          <div className="w-px self-stretch" style={{ background: 'var(--border)', opacity: 0.6 }} />
+
+          {/* Toggle: Suministros entregados */}
+          <label className="flex items-center gap-2.5 cursor-pointer select-none">
+            <div
+              onClick={() => {
+                const next = !showListos;
+                localStorage.setItem('kanban_show_listos', String(next));
+                setShowListos(next);
+              }}
+              className="w-11 h-6 rounded-full relative transition-all cursor-pointer flex-shrink-0"
+              style={{
+                background: showListos ? 'var(--gradient-blue)' : 'var(--border2)',
+                boxShadow: 'inset 0 1px 3px rgba(0,0,0,.1)',
+              }}
+            >
+              <div
+                className="absolute w-[18px] h-[18px] bg-white rounded-full top-[3px] transition-transform"
+                style={{
+                  left: showListos ? 'calc(100% - 21px)' : '3px',
+                  boxShadow: '0 1px 4px rgba(0,0,0,.25)',
+                }}
+              />
+            </div>
+            <span
+              className="font-semibold"
+              style={{ fontSize: '12px', color: showListos ? 'var(--green)' : 'var(--text3)' }}
+            >
+              Ver listos
+            </span>
+          </label>
+
+          {/* Toggle: Rechazados */}
+          <label className="flex items-center gap-2.5 cursor-pointer select-none">
+            <div
+              onClick={() => {
+                const next = !showRechazados;
+                localStorage.setItem('kanban_show_rechazados', String(next));
+                setShowRechazados(next);
+              }}
+              className="w-11 h-6 rounded-full relative transition-all cursor-pointer flex-shrink-0"
+              style={{
+                background: showRechazados ? 'var(--gradient-blue)' : 'var(--border2)',
+                boxShadow: 'inset 0 1px 3px rgba(0,0,0,.1)',
+              }}
+            >
+              <div
+                className="absolute w-[18px] h-[18px] bg-white rounded-full top-[3px] transition-transform"
+                style={{
+                  left: showRechazados ? 'calc(100% - 21px)' : '3px',
+                  boxShadow: '0 1px 4px rgba(0,0,0,.25)',
+                }}
+              />
+            </div>
+            <span
+              className="font-semibold"
+              style={{ fontSize: '12px', color: showRechazados ? 'var(--red)' : 'var(--text3)' }}
+            >
+              Ver rechazados
+            </span>
+          </label>
         </div>
       </div>
 
       {/* Kanban grid */}
-      <div className="grid grid-flow-col auto-cols-[minmax(280px,1fr)] gap-4 overflow-x-auto pb-2 snap-x snap-mandatory xl:grid-flow-row xl:auto-cols-auto xl:grid-cols-4 2xl:grid-cols-8 xl:overflow-visible">
+      <div className="grid grid-flow-col auto-cols-[minmax(255px,1fr)] gap-3 sm:gap-4 overflow-x-auto pb-3 snap-x snap-mandatory xl:grid-flow-row xl:auto-cols-auto xl:grid-cols-4 xl:overflow-visible">
         {stages.map(stage => {
           const items = filteredPedidos.filter(p => p.stage === stage);
           const isMineStage = !!user?.rol && items.some(p => pedidoNeedsMyAction(p.stage, user.rol));
+
+          // Sort: urgent first, then blocked, then oldest first
+          const sorted = [...items].sort((a, b) => {
+            if (a.urgente && !b.urgente) return -1;
+            if (!a.urgente && b.urgente) return 1;
+            if (a.bloqueado && !b.bloqueado) return -1;
+            if (!a.bloqueado && b.bloqueado) return 1;
+            return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+          });
+
           return (
-            <div 
-              key={stage} 
+            <div
+              key={stage}
               className="card relative min-h-[250px] min-w-0 snap-start overflow-hidden flex flex-col"
               style={{
                 background: 'var(--gradient-card)',
@@ -350,15 +503,16 @@ export function KanbanBoard({
                 className="pointer-events-none absolute inset-x-0 top-0 z-20 h-1.5"
                 style={{ background: STAGE_TOP_BAR[stage] }}
               />
+
               {/* Column header */}
-              <div 
+              <div
                 className="relative z-10 px-4 pb-3.5 pt-5 border-b"
                 style={{
                   background: STAGE_BG_MAP[stage],
                   borderBottom: `1px solid ${STAGE_BORDER_MAP[stage]}`,
                 }}
               >
-                <div className="flex items-start justify-between gap-1">
+                <div className="flex items-start justify-between gap-2">
                   <div className="flex flex-1 min-w-0 gap-2.5">
                     <div
                       className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[11px] border"
@@ -374,7 +528,7 @@ export function KanbanBoard({
                     </div>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-start gap-1.5">
-                        <div 
+                        <div
                           className="font-bold leading-tight"
                           style={{
                             fontSize: '12px',
@@ -426,9 +580,9 @@ export function KanbanBoard({
                         </div>
                       </div>
                       {STAGE_AREA[stage] !== '—' && (
-                        <div 
+                        <div
                           className="uppercase font-semibold mt-0.5"
-                          style={{ 
+                          style={{
                             fontSize: '9px',
                             color: 'var(--text3)',
                             letterSpacing: '.6px',
@@ -439,56 +593,60 @@ export function KanbanBoard({
                       )}
                     </div>
                   </div>
-                  <span 
-                    className="font-bold px-2 py-0.5 rounded-full flex-shrink-0"
-                    style={{
-                      fontSize: '11px',
-                      background: STAGE_BG_MAP[stage],
-                      color: STAGE_COLOR_MAP[stage],
-                      border: `1px solid ${STAGE_BORDER_MAP[stage]}`,
-                    }}
-                  >
-                    {items.length}
-                  </span>
+
                 </div>
               </div>
 
-              {/* Cards */}
+              {/* Cards — scrolls independently */}
               <div
-                className="relative flex flex-1 flex-col gap-2.5 p-3"
+                className="relative flex flex-col gap-2.5 overflow-y-auto p-3"
                 style={{
+                  maxHeight: 'calc(100vh - 320px)',
                   background: 'linear-gradient(180deg, rgba(248,250,252,.7) 0%, rgba(255,255,255,.94) 100%)',
+                  WebkitMaskImage: sorted.length > 3
+                    ? 'linear-gradient(to bottom, black calc(100% - 32px), transparent 100%)'
+                    : undefined,
+                  maskImage: sorted.length > 3
+                    ? 'linear-gradient(to bottom, black calc(100% - 32px), transparent 100%)'
+                    : undefined,
                   zIndex: 5,
                 }}
               >
-                {items.length === 0 && (
-                  <div 
-                    className="flex flex-1 items-center justify-center rounded-[12px] border border-dashed py-8 text-center"
-                    style={{
-                      fontSize: '12px',
-                      color: 'var(--text3)',
-                      borderColor: 'rgba(148,163,184,.35)',
-                      background: 'rgba(248,250,252,.72)',
-                    }}
-                  >
-                    Sin pedidos en esta etapa
+                {sorted.length === 0 && (
+                  <div className="empty-state py-8">
+                    <div className="empty-icon" style={{ fontSize: '22px' }}>{STAGE_ICONS[stage]}</div>
+                    <div className="empty-title" style={{ fontSize: '12px' }}>Todo al día</div>
+                    <div className="empty-copy" style={{ fontSize: '11px' }}>
+                      Sin pedidos en {STAGE_LABELS[stage].toLowerCase()}
+                    </div>
                   </div>
                 )}
-                {items.map(p => {
+                {sorted.map(p => {
                   const needsMe = pedidoNeedsMyAction(p.stage, user?.rol || '');
+                  const hasAction = (() => {
+                    if (user?.rol === 'secretaria' && (p.stage === PedidoStage.APROBACION || p.stage === PedidoStage.FIRMA)) return true;
+                    if (user?.rol === 'compras' && (p.stage === PedidoStage.PRESUPUESTOS || p.stage === PedidoStage.CARGA_FACTURA)) return true;
+                    if (user?.rol === 'tesoreria' && p.stage === PedidoStage.GESTION_PAGOS) return true;
+                    if (user?.rol === 'admin' && p.stage === PedidoStage.ESPERANDO_SUMINISTROS) return true;
+                    return false;
+                  })();
+
+                  const filled = p.presupuestosCargados ?? 0;
+                  const isPresupuestoReady = filled >= minPresupuestos;
+
                   return (
                     <div
                       key={p.id}
                       onClick={() => onPedidoClick(p)}
                       className={cn(
                         'p-3 cursor-pointer transition-all',
-                        p.bloqueado && 'border-red-200 bg-red-50',
+                        p.bloqueado && !needsMe && 'border-red-200 bg-red-50',
                       )}
                       style={{
                         borderRadius: '12px',
-                        border: needsMe 
-                          ? (p.urgente 
-                            ? '1.5px solid var(--red-brd)' 
+                        border: needsMe
+                          ? (p.urgente
+                            ? '1.5px solid var(--red-brd)'
                             : '1.5px solid var(--blue-brd)')
                           : '1.5px solid var(--border)',
                         background: needsMe
@@ -520,35 +678,51 @@ export function KanbanBoard({
                           : '0 12px 24px rgba(15,23,42,.09), inset 0 1px 0 rgba(255,255,255,.75)';
                       }}
                     >
+                      {/* Card top row: number + age + status icons */}
                       <div className="mb-2 flex items-center justify-between gap-2">
-                        <span 
-                          className="rounded-full border px-2 py-0.5 font-mono"
-                          style={{ fontSize: '10px', color: 'var(--text3)', borderColor: 'var(--border)', background: 'var(--surface)' }}
+                        <span
+                          className="rounded-full border px-2.5 py-0.5 font-mono font-semibold"
+                          style={{
+                            fontSize: '11px',
+                            color: 'var(--text2)',
+                            borderColor: 'var(--border2)',
+                            background: 'var(--surface2)',
+                          }}
                         >
                           {p.numero}
                         </span>
-                        <div className="flex items-center gap-1">
+                        <div className="flex items-center gap-1.5">
+                          <CardAge createdAt={p.createdAt} />
                           {p.bloqueado && <Lock size={11} style={{ color: 'var(--red)' }} />}
                           {p.urgente && <AlertTriangle size={11} style={{ color: 'var(--red)' }} />}
                         </div>
                       </div>
-                      <div 
-                        className="font-bold leading-tight mb-1 line-clamp-2"
+
+                      {/* Description */}
+                      <div
+                        className="font-bold leading-tight mb-1.5 line-clamp-2"
                         style={{ fontSize: '12px', color: 'var(--text)' }}
                       >
                         {p.descripcion}
                       </div>
+
+                      {/* Rejection note */}
                       {p.stage === PedidoStage.RECHAZADO && (
-                        <div className="mb-1 text-[10px] font-bold leading-tight text-red-700 line-clamp-2">
+                        <div className="mb-1.5 text-[10px] font-bold leading-tight text-red-700 line-clamp-2">
                           {pedidoEstadoVisibleLabel(p)}
                         </div>
                       )}
-                      <div 
-                        className="mb-1.5"
-                        style={{ fontSize: '11px', color: 'var(--text2)' }}
+
+                      {/* Requesting area — compact chip */}
+                      <div
+                        className="flex items-center gap-1 mb-2"
+                        style={{ fontSize: '10px', color: 'var(--text3)' }}
                       >
-                        Solicitó: {p.area}
+                        <span style={{ fontSize: '9px' }}>📍</span>
+                        {p.area}
                       </div>
+
+                      {/* Badges */}
                       <div className="flex flex-wrap gap-1">
                         {p.monto && (
                           <span className="badge badge-amber gap-1" style={{ fontSize: '9px' }}>
@@ -559,26 +733,50 @@ export function KanbanBoard({
                         {p.bloqueado && (
                           <span className="badge badge-red" style={{ fontSize: '9px' }}>🔒 Bloqueado</span>
                         )}
+                        {p.stage === PedidoStage.GESTION_PAGOS && p.fechaLimitePago && (
+                          <FechaLimiteBadge fecha={p.fechaLimitePago} />
+                        )}
                         {p.stage === PedidoStage.PRESUPUESTOS && (
-                          <span
-                            className="badge gap-0.5 font-mono font-bold"
-                            style={{
-                              fontSize: '9px',
-                              background: (p.presupuestosCargados ?? 0) >= minPresupuestos
-                                ? 'rgba(34,197,94,.14)'
-                                : 'rgba(139,92,246,.12)',
-                              color: (p.presupuestosCargados ?? 0) >= minPresupuestos
-                                ? '#15803d'
-                                : 'var(--purple-mid)',
-                              border: `1px solid ${(p.presupuestosCargados ?? 0) >= minPresupuestos ? 'rgba(34,197,94,.35)' : 'rgba(139,92,246,.28)'}`,
-                            }}
-                            title={`Cargados / máximo (${minPresupuestos} mínimo para enviar)`}
-                          >
-                            {p.presupuestosCargados ?? 0}/{maxPresupuestos}
-                          </span>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <div className="flex gap-0.5">
+                              {Array.from({ length: maxPresupuestos }).map((_, i) => (
+                                <div
+                                  key={i}
+                                  className="rounded-sm"
+                                  style={{
+                                    width: 10,
+                                    height: 4,
+                                    background: i < filled
+                                      ? (isPresupuestoReady ? 'var(--green-mid)' : 'var(--purple-mid)')
+                                      : 'var(--border2)',
+                                  }}
+                                />
+                              ))}
+                            </div>
+                            <span
+                              style={{
+                                fontSize: '9px',
+                                color: isPresupuestoReady ? 'var(--green)' : 'var(--text3)',
+                                fontVariantNumeric: 'tabular-nums',
+                              }}
+                            >
+                              {filled}/{maxPresupuestos}
+                            </span>
+                          </div>
                         )}
                       </div>
-                      <ActionButton pedido={p} rol={user?.rol || ''} onAction={onAction} minPresupuestos={minPresupuestos} />
+
+                      {/* Action button with divider */}
+                      {hasAction && (
+                        <div className="mt-2 border-t pt-2" style={{ borderColor: 'var(--border)' }}>
+                          <ActionButton
+                            pedido={p}
+                            rol={user?.rol || ''}
+                            onAction={onAction}
+                            minPresupuestos={minPresupuestos}
+                          />
+                        </div>
+                      )}
                     </div>
                   );
                 })}

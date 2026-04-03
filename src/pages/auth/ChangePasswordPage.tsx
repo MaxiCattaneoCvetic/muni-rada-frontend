@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { usersApi } from '../../api/services';
 import { useAuthStore } from '../../store/auth.store';
+import { ButtonSpinner } from '../../components/ui/loading';
 
 export default function ChangePasswordPage() {
   const navigate = useNavigate();
@@ -79,7 +80,7 @@ export default function ChangePasswordPage() {
               <input type="password" value={confirm} onChange={e => setConfirm(e.target.value)} className="input" required minLength={6} />
             </div>
             <button type="submit" disabled={loading} className="btn btn-primary w-full justify-center py-3 mt-2">
-              {loading ? 'Guardando...' : 'Cambiar contraseña'}
+              {loading ? <ButtonSpinner label="Guardando" /> : 'Cambiar contraseña'}
             </button>
           </form>
         </div>

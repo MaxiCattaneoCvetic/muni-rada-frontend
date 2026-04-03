@@ -6,6 +6,7 @@ import type { UserRole } from '../../types';
 import { isDemoMode } from '../../lib/demo';
 import { cn } from '../../lib/utils';
 import { DEMO_ROLE_ICONS, demoRoleIconSurface } from '../../lib/demo-role-icons';
+import { RadaTillyLoader } from '../../components/ui/loading';
 
 const ROLES: UserRole[] = ['secretaria', 'compras', 'tesoreria', 'admin'];
 
@@ -140,8 +141,8 @@ export default function DemoEntryPage() {
         </div>
 
         {loading && (
-          <div className="text-center py-10" style={{ fontSize: '13px', color: 'rgba(255,255,255,.5)' }}>
-            Un momento…
+          <div className="mx-auto max-w-md">
+            <RadaTillyLoader variant="contained" label="Ingresando a la demo" />
           </div>
         )}
 

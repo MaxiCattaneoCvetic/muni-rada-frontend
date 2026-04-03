@@ -8,6 +8,7 @@ import type { Pedido } from '../../types';
 import { PedidoStage } from '../../types';
 import { useState } from 'react';
 import { ActionModal } from '../../components/ui/ActionModal';
+import { RadaTillyLoader } from '../../components/ui/loading';
 import { Activity, ArrowRight, CheckCircle2, ChevronRight, ClipboardList, Lock, type LucideIcon } from 'lucide-react';
 
 export type DashboardMode = 'dashboard' | 'aprobar' | 'firmar';
@@ -123,10 +124,10 @@ export default function DashboardPage({ mode = 'dashboard' }: { mode?: Dashboard
   const refetch = () => qc.invalidateQueries({ queryKey: ['pedidos'] });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 sm:space-y-5 lg:space-y-6">
       {/* Hero Card */}
       <div 
-        className="dashboard-hero rounded-[18px] p-6 relative overflow-hidden"
+        className="dashboard-hero rounded-[16px] sm:rounded-[18px] p-4 sm:p-5 md:p-6 relative overflow-hidden"
         style={{
           background: 'linear-gradient(135deg, #1e40af 0%, #2563eb 60%, #3b82f6 100%)',
           boxShadow: '0 8px 32px rgba(30,64,175,.35), 0 0 0 1px rgba(255,255,255,.1)',
@@ -148,14 +149,14 @@ export default function DashboardPage({ mode = 'dashboard' }: { mode?: Dashboard
         
         <div className="relative z-10">
           <div 
-            className="text-white font-extrabold mb-1"
-            style={{ fontSize: '21px', letterSpacing: '-.5px' }}
+            className="text-white font-extrabold mb-1 text-[17px] sm:text-[20px] md:text-[21px]"
+            style={{ letterSpacing: '-.5px' }}
           >
             {pageMeta ? pageMeta.title : `Buenos días, ${user?.nombre} 👋`}
           </div>
           <div 
-            className="mb-4"
-            style={{ fontSize: '13px', color: 'rgba(255,255,255,.7)' }}
+            className="mb-3 sm:mb-4 text-[12px] sm:text-[13px]"
+            style={{ color: 'rgba(255,255,255,.7)' }}
           >
             {pageMeta
               ? `${pageMeta.subtitle} · ${new Date().toLocaleDateString('es-AR', { weekday: 'long', day: 'numeric', month: 'long' })}`
@@ -163,10 +164,10 @@ export default function DashboardPage({ mode = 'dashboard' }: { mode?: Dashboard
           </div>
           
           {/* Quick stats */}
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1.5 sm:gap-2">
             {urgentes.length > 0 && (
               <div 
-                className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-[10px] cursor-pointer transition-all"
+                className="flex items-center gap-2 sm:gap-2.5 px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-[10px] cursor-pointer transition-all"
                 style={{
                   background: 'rgba(255,255,255,.1)',
                   backdropFilter: 'blur(8px)',
@@ -199,7 +200,7 @@ export default function DashboardPage({ mode = 'dashboard' }: { mode?: Dashboard
             )}
             {myPending.length > 0 && (
               <div 
-                className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-[10px] cursor-pointer transition-all"
+                className="flex items-center gap-2 sm:gap-2.5 px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-[10px] cursor-pointer transition-all"
                 style={{
                   background: 'rgba(255,255,255,.1)',
                   backdropFilter: 'blur(8px)',
@@ -232,7 +233,7 @@ export default function DashboardPage({ mode = 'dashboard' }: { mode?: Dashboard
             )}
             {listos.length > 0 && (
               <div 
-                className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-[10px] cursor-pointer transition-all"
+                className="flex items-center gap-2 sm:gap-2.5 px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-[10px] cursor-pointer transition-all"
                 style={{
                   background: 'rgba(255,255,255,.1)',
                   backdropFilter: 'blur(8px)',
@@ -285,7 +286,7 @@ export default function DashboardPage({ mode = 'dashboard' }: { mode?: Dashboard
       ) : (
         <>
           {/* KPIs */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 sm:gap-4">
             <KpiCard
               value={enCurso.length}
               label="En curso"
@@ -323,7 +324,7 @@ export default function DashboardPage({ mode = 'dashboard' }: { mode?: Dashboard
 
           {/* Kanban */}
           {isLoading ? (
-            <div className="text-center py-16 text-slate-400">Cargando pedidos...</div>
+            <RadaTillyLoader variant="contained" label="Cargando pedidos" />
           ) : (
             <KanbanBoard
               pedidos={displayPedidos}
@@ -393,7 +394,7 @@ function KpiCard({
     <div
       className="kpi-card relative overflow-hidden rounded-[var(--r3)] border border-white/90 anim"
       style={{
-        padding: '20px 20px 16px',
+        padding: 'clamp(14px, 2vw, 20px) clamp(14px, 2vw, 20px) clamp(12px, 1.5vw, 16px)',
         background: 'var(--gradient-card)',
         boxShadow: 'var(--shadow)',
       }}
@@ -409,9 +410,8 @@ function KpiCard({
       <div className="relative z-10 flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
           <div
-            className="font-extrabold tabular-nums tracking-tight"
+            className="font-extrabold tabular-nums tracking-tight text-[28px] sm:text-[34px]"
             style={{
-              fontSize: '34px',
               lineHeight: 1,
               letterSpacing: '-1.5px',
               color: theme.accent,
@@ -473,7 +473,7 @@ function TaskQueueSection({
   getActionLabel: (pedido: Pedido) => string;
 }) {
   if (isLoading) {
-    return <div className="card p-10 text-center text-slate-400">Cargando pendientes...</div>;
+    return <RadaTillyLoader variant="contained" label="Cargando pendientes" />;
   }
 
   return (
@@ -538,7 +538,7 @@ function TaskQueueSection({
                   <button
                     type="button"
                     onClick={() => onAction(pedido)}
-                    className={pedido.urgente ? 'btn btn-danger btn-sm justify-center' : 'btn btn-primary btn-sm justify-center'}
+                    className={pedido.urgente ? 'btn btn-success btn-sm justify-center' : 'btn btn-primary btn-sm justify-center'}
                   >
                     {pedido.urgente ? `🚨 ${getActionLabel(pedido)}` : getActionLabel(pedido)}
                   </button>

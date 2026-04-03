@@ -1,9 +1,9 @@
 import api from './client';
 import type {
-  LoginResponse, Pedido, Presupuesto, Proveedor, ProveedorComentario, FacturaAsociada,
+  LoginResponse, Pedido, Presupuesto, Proveedor, ProveedorComentario, PedidoComentario, FacturaAsociada,
   CreateProveedorDto, UpdateProveedorDto,
   Sellado, Pago, User,
-  SistemaConfig, CreateUserDto, UserRole,
+  SistemaConfig, CreateUserDto, UserRole, FinanzasResumen, GastoFinanzas,
 } from '../types';
 
 // ── AUTH ──────────────────────────────────────────────────────────────
@@ -37,8 +37,10 @@ export const usersApi = {
 
 // ── PEDIDOS ───────────────────────────────────────────────────────────
 export const pedidosApi = {
-  getAll: (params?: { stage?: number; area?: string; urgente?: boolean }) =>
+  getAll: (params?: { stage?: number; area?: string; urgente?: boolean; includeArchived?: boolean }) =>
     api.get<Pedido[]>('/pedidos', { params }).then(r => r.data),
+  archivar: (id: string) => api.patch<Pedido>(`/pedidos/${id}/archivar`).then(r => r.data),
+  desarchivar: (id: string) => api.patch<Pedido>(`/pedidos/${id}/desarchivar`).then(r => r.data),
   getAllAdmin: (params?: object) =>
     api.get<Pedido[]>('/pedidos/todos', { params }).then(r => r.data),
   getStats: () => api.get('/pedidos/stats').then(r => r.data),
@@ -70,13 +72,20 @@ export const pedidosApi = {
     api.patch<Pedido>(`/pedidos/${id}/rechazar-presupuesto`, { motivo }).then(r => r.data),
   confirmarRecepcion: (id: string, nota?: string) =>
     api.patch<Pedido>(`/pedidos/${id}/confirmar-recepcion`, { nota }).then(r => r.data),
-  subirFactura: (id: string, factura: File) => {
+  subirFactura: (id: string, factura: File, fechaLimitePago?: string) => {
     const form = new FormData();
     form.append('factura', factura);
+    if (fechaLimitePago) form.append('fechaLimitePago', fechaLimitePago);
     return api.patch<Pedido>(`/pedidos/${id}/subir-factura`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(r => r.data);
   },
+  getOrdenCompra: (id: string) =>
+    api.get<{ numero: string; url: string; available: boolean }>(`/pedidos/${id}/orden-compra`).then(r => r.data),
+  getComentarios: (pedidoId: string) =>
+    api.get<PedidoComentario[]>(`/pedidos/${pedidoId}/comentarios`).then(r => r.data),
+  addComentario: (pedidoId: string, texto: string) =>
+    api.post<PedidoComentario>(`/pedidos/${pedidoId}/comentarios`, { texto }).then(r => r.data),
 };
 
 // ── PROVEEDORES ───────────────────────────────────────────────────────
@@ -139,6 +148,14 @@ export const pagosApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     }).then(r => r.data);
   },
+};
+
+// ── FINANZAS ──────────────────────────────────────────────────────────
+export const finanzasApi = {
+  getResumen: (params?: { year?: number; area?: string; proveedor?: string }) =>
+    api.get<FinanzasResumen>('/finanzas/resumen', { params }).then(r => r.data),
+  getGastos: (params?: { year?: number; area?: string; proveedor?: string }) =>
+    api.get<GastoFinanzas[]>('/finanzas/gastos', { params }).then(r => r.data),
 };
 
 // ── CONFIG ────────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { Pedido, Presupuesto } from '../../types';
 import { PedidoStage } from '../../types';
@@ -16,9 +16,74 @@ import {
   Mail,
   Package,
   ShieldAlert,
-  ExternalLink,
   Ban,
 } from 'lucide-react';
+import { ButtonSpinner } from './loading';
+import { StepSuccessModal } from './StepSuccessModal';
+import { OcViewerModal } from './OcViewerModal';
+import type { SuccessTheme } from './StepSuccessModal';
+
+interface SuccessConfig {
+  theme: SuccessTheme;
+  title: string;
+  nextStep: string;
+  nextStepSub?: string;
+  isFinal?: boolean;
+}
+
+const ACTION_SUCCESS_CONFIG: Record<string, SuccessConfig> = {
+  'aprobar': {
+    theme: 'green',
+    title: '¡Pedido aprobado!',
+    nextStep: 'El pedido fue enviado a Compras.',
+    nextStepSub: 'El área de Compras ya puede verlo en el sistema y comenzará la búsqueda de presupuestos de proveedores.',
+  },
+  'aprobar-urgente': {
+    theme: 'green',
+    title: '¡Pedido urgente aprobado!',
+    nextStep: 'El pedido fue enviado a Compras con prioridad urgente.',
+    nextStepSub: 'Por ser urgente, Compras le dará atención inmediata a la búsqueda de presupuestos.',
+  },
+  'rechazar': {
+    theme: 'amber',
+    title: 'Expediente rechazado',
+    nextStep: 'El expediente quedó cerrado.',
+    nextStepSub: 'No requiere más acción en el circuito. El área solicitante y Compras pueden ver el motivo registrado.',
+    isFinal: true,
+  },
+  'firmar': {
+    theme: 'green',
+    title: '¡Presupuesto autorizado!',
+    nextStep: 'Compras debe subir la factura del proveedor seleccionado.',
+    nextStepSub: 'Una vez adjunta la factura, Tesorería podrá gestionar el sellado y el pago.',
+  },
+  'subir-factura': {
+    theme: 'blue',
+    title: '¡Factura cargada!',
+    nextStep: 'Tesorería gestiona el sellado provincial y el pago.',
+    nextStepSub: 'Si el monto supera el umbral configurado, primero se registrará el sellado antes de habilitar el pago.',
+  },
+  'sellado': {
+    theme: 'teal',
+    title: '¡Sellado registrado!',
+    nextStep: 'Tesorería puede ahora proceder con el registro del pago.',
+    nextStepSub: 'El sellado quedó asentado y el expediente está desbloqueado para continuar.',
+  },
+  'pago': {
+    theme: 'teal',
+    title: '¡Pago registrado!',
+    nextStep: 'Suministros coordina la entrega o recepción de los bienes.',
+    nextStepSub: 'Una vez recibidos los suministros, el área confirma la recepción y el expediente queda cerrado.',
+  },
+  'confirmar-recepcion': {
+    theme: 'green',
+    title: '¡Suministros recibidos!',
+    nextStep: 'El expediente está completo y cerrado.',
+    nextStepSub: 'No se requieren más acciones. Todo el circuito de compras quedó registrado correctamente.',
+    isFinal: true,
+  },
+};
+
 
 function nombreMostrado(u?: { nombreCompleto?: string; nombre?: string; apellido?: string } | null) {
   if (!u) return '—';
@@ -66,8 +131,15 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
   const [montoPagado, setMontoPagado] = useState(pedido.monto?.toString() || '');
   const [facturaFile, setFacturaFile] = useState<File | null>(null);
   const [facturaComprasFile, setFacturaComprasFile] = useState<File | null>(null);
+  const [fechaLimitePago, setFechaLimitePago] = useState('');
   const [error, setError] = useState('');
   const [rechazoAck, setRechazoAck] = useState(false);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [ocData, setOcData] = useState<{ numero?: string; url?: string } | null>(null);
+  const [ocTimeout, setOcTimeout] = useState(false);
+  const [showOcViewer, setShowOcViewer] = useState(false);
+  const ocPollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ocPollAttempts = useRef(0);
 
   useEffect(() => {
     if (action === 'rechazar') {
@@ -76,8 +148,40 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
     }
   }, [action]);
 
-  const mut = useMutation({
-    onSuccess,
+  // Poll for OC data after firmar succeeds (OC generation is async on the backend)
+  useEffect(() => {
+    if (!showSuccess || action !== 'firmar') return;
+
+    ocPollAttempts.current = 0;
+
+    const poll = async () => {
+      ocPollAttempts.current += 1;
+      try {
+        const p = await pedidosApi.getById(pedido.id);
+        if (p.ordenCompraUrl) {
+          setOcData({ numero: p.ordenCompraNumero, url: p.ordenCompraUrl });
+          return;
+        }
+      } catch {
+        // silently ignore fetch errors during polling
+      }
+      if (ocPollAttempts.current < 10) {
+        ocPollTimer.current = setTimeout(poll, 1500);
+      } else {
+        setOcTimeout(true);
+      }
+    };
+
+    ocPollTimer.current = setTimeout(poll, 1200);
+
+    return () => {
+      if (ocPollTimer.current) clearTimeout(ocPollTimer.current);
+    };
+  }, [showSuccess, action, pedido.id]);
+
+  const mut = useMutation<unknown, unknown, Promise<unknown>>({
+    mutationFn: (promise) => promise,
+    onSuccess: () => setShowSuccess(true),
     onError: (e: any) => setError(e.response?.data?.message || 'Error al procesar'),
   });
 
@@ -102,12 +206,14 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
       }, comprobanteFile || undefined) as any);
     } else if (action === 'pago') {
       if (!numeroTransf) { setError('Ingresá el número de transferencia'); return; }
+      if (!montoPagado || isNaN(parseFloat(montoPagado))) { setError('Ingresá el monto pagado'); return; }
+      if (!facturaFile) { setError('Adjuntá el comprobante de pago en PDF'); return; }
       mut.mutate(pagosApi.registrar(pedido.id, {
         numeroTransferencia: numeroTransf, fechaPago, montoPagado: parseFloat(montoPagado),
-      }, facturaFile || undefined) as any);
+      }, facturaFile) as any);
     } else if (action === 'subir-factura') {
       if (!facturaComprasFile) { setError('Seleccioná la factura en PDF'); return; }
-      mut.mutate(pedidosApi.subirFactura(pedido.id, facturaComprasFile) as any);
+      mut.mutate(pedidosApi.subirFactura(pedido.id, facturaComprasFile, fechaLimitePago || undefined) as any);
     }
   };
 
@@ -121,6 +227,93 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
     'pago': '💳 Registrar pago',
     'subir-factura': '📄 Subir factura del proveedor',
   };
+
+  if (showSuccess) {
+    const cfg = ACTION_SUCCESS_CONFIG[action] ?? {
+      theme: 'green' as SuccessTheme,
+      title: '¡Listo!',
+      nextStep: 'La acción fue registrada correctamente.',
+    };
+    const isUrgente = (action === 'aprobar-urgente') || (action === 'aprobar' && pedido.urgente);
+
+    const ocSection = action === 'firmar' ? (
+      <div
+        className="rounded-2xl border overflow-hidden"
+        style={{ borderColor: 'var(--blue-brd)', background: 'var(--blue-lt)' }}
+      >
+        <div
+          className="px-4 py-2 flex items-center gap-2 border-b"
+          style={{ borderColor: 'var(--blue-brd)', background: 'rgba(219,234,254,.7)' }}
+        >
+          <FileText size={14} style={{ color: 'var(--blue)' }} />
+          <span style={{ fontSize: '11px', fontWeight: 800, color: 'var(--blue)', textTransform: 'uppercase', letterSpacing: '.05em' }}>
+            Orden de Compra
+          </span>
+        </div>
+        <div className="px-4 py-3 flex items-center justify-between gap-3">
+          {ocData?.url ? (
+            <>
+              <div>
+                <p style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>
+                  Generada automáticamente
+                </p>
+                {ocData.numero && (
+                  <p style={{ fontSize: '12px', fontFamily: "'DM Mono', monospace", color: 'var(--blue)', fontWeight: 600 }}>
+                    {ocData.numero}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => setShowOcViewer(true)}
+                className="btn btn-primary btn-sm gap-1.5 shrink-0"
+              >
+                <FileText size={13} /> Ver OC
+              </button>
+            </>
+          ) : ocTimeout ? (
+            <p style={{ fontSize: '12px', color: 'var(--text2)' }}>
+              La OC se está generando y estará disponible en la ficha del pedido.
+            </p>
+          ) : (
+            <div className="flex items-center gap-2">
+              <svg className="animate-spin" width="16" height="16" viewBox="0 0 16 16" fill="none">
+                <circle cx="8" cy="8" r="6" stroke="var(--blue-brd)" strokeWidth="2.5" />
+                <path d="M8 2a6 6 0 0 1 6 6" stroke="var(--blue)" strokeWidth="2.5" strokeLinecap="round" />
+              </svg>
+              <p style={{ fontSize: '12px', color: 'var(--text2)' }}>Generando orden de compra...</p>
+            </div>
+          )}
+        </div>
+      </div>
+    ) : undefined;
+
+    return (
+      <>
+        <StepSuccessModal
+          theme={cfg.theme}
+          title={cfg.title}
+          nextStep={cfg.nextStep}
+          nextStepSub={cfg.nextStepSub}
+          isFinal={cfg.isFinal}
+          pedidoNumero={pedido.numero}
+          pedidoDescripcion={pedido.descripcion}
+          urgenteNote={isUrgente ? 'Prioridad urgente — Compras verá este pedido destacado en el tablero.' : undefined}
+          bottomExtra={ocSection}
+          onDismiss={onSuccess}
+        />
+
+        {/* OC PDF viewer — layered on top of the success modal */}
+        {showOcViewer && ocData?.url && (
+          <OcViewerModal
+            url={ocData.url}
+            numero={ocData.numero}
+            pedidoNumero={pedido.numero}
+            onClose={() => setShowOcViewer(false)}
+          />
+        )}
+      </>
+    );
+  }
 
   return (
     <div 
@@ -548,27 +741,137 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
 
           {/* Pago fields */}
           {action === 'pago' && (
-            <>
-              <div><label className="label">N° de transferencia *</label><input value={numeroTransf} onChange={e => setNumeroTransf(e.target.value)} className="input" placeholder="TRF-00234581" /></div>
-              <div><label className="label">Fecha de pago</label><input type="date" value={fechaPago} onChange={e => setFechaPago(e.target.value)} className="input" /></div>
-              <div><label className="label">Monto pagado ($)</label><input type="number" value={montoPagado} onChange={e => setMontoPagado(e.target.value)} className="input" /></div>
+            <div className="space-y-3.5">
+
+              {/* Comprobante/transferencia */}
               <div>
-                <label className="label">Factura (PDF) — opcional</label>
-                <input type="file" accept=".pdf" onChange={e => setFacturaFile(e.target.files?.[0] || null)} className="input py-2 text-sm" />
+                <label className="label">N° de transferencia / comprobante *</label>
+                <input
+                  value={numeroTransf}
+                  onChange={e => setNumeroTransf(e.target.value)}
+                  className="input"
+                  placeholder="TRF-00234581"
+                />
               </div>
-            </>
+
+              {/* Fecha */}
+              <div>
+                <label className="label">Fecha de pago *</label>
+                <input
+                  type="date"
+                  value={fechaPago}
+                  onChange={e => setFechaPago(e.target.value)}
+                  className="input"
+                />
+              </div>
+
+              {/* Monto total del sistema (read-only) */}
+              {pedido.monto != null && (
+                <div>
+                  <label className="label">
+                    Monto total del pedido
+                    <span className="ml-1.5 text-[10px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+                      Sistema
+                    </span>
+                  </label>
+                  <div
+                    className="input flex items-center gap-2 font-mono font-bold cursor-not-allowed select-none"
+                    style={{ background: 'var(--surface2)', color: 'var(--text2)' }}
+                  >
+                    <span className="text-slate-400 text-sm">$</span>
+                    <span>{formatMoney(pedido.monto).replace('$', '').trim()}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Monto pagado */}
+              <div>
+                <label className="label">Monto pagado ($) *</label>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  value={montoPagado}
+                  onChange={e => setMontoPagado(e.target.value)}
+                  className="input"
+                  placeholder="0.00"
+                />
+              </div>
+
+              {/* Monto adeudado (calculado) */}
+              {pedido.monto != null && montoPagado !== '' && !isNaN(parseFloat(montoPagado)) && (
+                <div>
+                  <label className="label">Monto adeudado</label>
+                  {(() => {
+                    const adeudado = Number(pedido.monto) - parseFloat(montoPagado);
+                    const isOverpaid = adeudado < 0;
+                    const isPaid = adeudado === 0;
+                    return (
+                      <div
+                        className="input flex items-center gap-2 font-mono font-bold cursor-not-allowed select-none"
+                        style={{
+                          background: isOverpaid ? 'var(--red-lt)' : isPaid ? 'var(--green-lt)' : 'var(--amber-lt)',
+                          color: isOverpaid ? 'var(--red)' : isPaid ? 'var(--green)' : 'var(--amber)',
+                          border: `1px solid ${isOverpaid ? 'var(--red-brd)' : isPaid ? 'var(--green-brd)' : 'var(--amber-brd)'}`,
+                        }}
+                      >
+                        <span className="text-sm">$</span>
+                        <span>
+                          {isOverpaid
+                            ? `Excede en ${formatMoney(Math.abs(adeudado)).replace('$', '').trim()}`
+                            : isPaid
+                              ? 'Pago completo ✓'
+                              : formatMoney(adeudado).replace('$', '').trim()}
+                        </span>
+                      </div>
+                    );
+                  })()}
+                </div>
+              )}
+
+              {/* Comprobante de pago (obligatorio) */}
+              <div>
+                <label className="label">Comprobante de pago (PDF) *</label>
+                <p className="text-xs text-slate-500 mb-2">Adjuntá el comprobante de transferencia bancaria u orden de pago.</p>
+                <input
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  onChange={e => setFacturaFile(e.target.files?.[0] || null)}
+                  className="input py-2 text-sm"
+                />
+              </div>
+
+            </div>
           )}
 
           {action === 'subir-factura' && (
-            <div>
-              <label className="label">Factura del proveedor (PDF) *</label>
-              <p className="text-xs text-slate-500 mb-2">Adjuntá la factura correspondiente al presupuesto firmado para que Tesorería pueda gestionar sellado y pago.</p>
-              <input
-                type="file"
-                accept=".pdf,application/pdf"
-                onChange={e => setFacturaComprasFile(e.target.files?.[0] || null)}
-                className="input py-2 text-sm"
-              />
+            <div className="space-y-3.5">
+              <div>
+                <label className="label">Factura del proveedor (PDF) *</label>
+                <p className="text-xs text-slate-500 mb-2">Adjuntá la factura correspondiente al presupuesto firmado para que Tesorería pueda gestionar sellado y pago.</p>
+                <input
+                  type="file"
+                  accept=".pdf,application/pdf"
+                  onChange={e => setFacturaComprasFile(e.target.files?.[0] || null)}
+                  className="input py-2 text-sm"
+                />
+              </div>
+              <div>
+                <label className="label">
+                  Fecha límite de pago
+                  <span className="ml-1.5 text-[10px] font-semibold text-amber-700 bg-amber-100 border border-amber-200 px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+                    Tesorería
+                  </span>
+                </label>
+                <p className="text-xs text-slate-500 mb-2">Se usará para generar alertas en Tesorería. Si no la sabés ahora podés dejarla vacía.</p>
+                <input
+                  type="date"
+                  value={fechaLimitePago}
+                  onChange={e => setFechaLimitePago(e.target.value)}
+                  min={new Date().toISOString().split('T')[0]}
+                  className="input"
+                />
+              </div>
             </div>
           )}
         </div>
@@ -592,7 +895,7 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
             className={`btn ${action.includes('rechazar') ? 'btn-danger' : action === 'firmar' || action === 'confirmar-recepcion' || action === 'subir-factura' ? 'btn-success' : 'btn-primary'}`}
           >
             {mut.isPending
-              ? 'Procesando...'
+              ? <ButtonSpinner label="Procesando" />
               : action === 'firmar'
                 ? 'Confirmar firma y autorizar compra'
                 : action === 'rechazar'

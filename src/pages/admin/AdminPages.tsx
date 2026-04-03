@@ -5,6 +5,8 @@ import { formatMoney, formatDate, stageLabel, stageBadgeClass, stageIcon, pedido
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
 import { ActionModal } from '../../components/ui/ActionModal';
+import { ButtonSpinner, RadaTillyLoader } from '../../components/ui/loading';
+import { Pagination, usePagination } from '../../components/ui/Pagination';
 import type { Pedido } from '../../types';
 import { PedidoStage } from '../../types';
 
@@ -22,7 +24,7 @@ export function AdminConfigPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['config'] }); setSaved(true); setTimeout(() => setSaved(false), 3000); },
   });
 
-  if (!config) return <div className="p-8 text-center text-slate-400">Cargando...</div>;
+  if (!config) return <RadaTillyLoader variant="fullscreen" label="Cargando configuración" />;
 
   return (
     <div className="page-shell-form">
@@ -80,7 +82,7 @@ export function AdminConfigPage() {
         </div>
         {saved && <div className="alert alert-success">✅ Configuración guardada</div>}
         <button onClick={() => mut.mutate()} disabled={!form || mut.isPending} className="btn btn-primary">
-          {mut.isPending ? 'Guardando...' : 'Guardar cambios'}
+          {mut.isPending ? <ButtonSpinner label="Guardando" /> : 'Guardar cambios'}
         </button>
       </div>
 
@@ -103,12 +105,26 @@ export function AdminConfigPage() {
 export function HistorialPage() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
-  const { data: pedidos = [], isLoading } = useQuery({
-    queryKey: ['pedidos-todos', user?.rol],
-    queryFn: () => pedidosApi.getAll(),
-  });
+  const [activeTab, setActiveTab] = useState<'activos' | 'archivados'>('activos');
   const [search, setSearch] = useState('');
   const [stageFilter, setStageFilter] = useState('');
+  const [page, setPage] = useState(1);
+
+  const { data: pedidosActivos = [], isLoading: loadingActivos } = useQuery({
+    queryKey: ['pedidos-historial-activos', user?.rol],
+    queryFn: () => pedidosApi.getAll(),
+  });
+
+  const { data: pedidosConArchivados = [], isLoading: loadingArchivados } = useQuery({
+    queryKey: ['pedidos-historial-archivados', user?.rol],
+    queryFn: () => pedidosApi.getAll({ includeArchived: true }),
+    enabled: activeTab === 'archivados',
+  });
+
+  const pedidos = activeTab === 'activos'
+    ? pedidosActivos
+    : pedidosConArchivados.filter(p => !!p.archivedAt);
+  const isLoading = activeTab === 'activos' ? loadingActivos : loadingArchivados;
 
   const filtered = pedidos.filter(p => {
     const matchSearch = !search || p.descripcion.toLowerCase().includes(search.toLowerCase()) || p.numero.includes(search) || p.area.toLowerCase().includes(search.toLowerCase());
@@ -116,12 +132,45 @@ export function HistorialPage() {
     return matchSearch && matchStage;
   });
 
+  const { page: safePage, totalPages, start, end } = usePagination({
+    total: filtered.length,
+    pageSize: 15,
+    page,
+    setPage,
+    resetDeps: [search, stageFilter, activeTab],
+  });
+
+  const pageItems = filtered.slice(start, end);
+
   return (
     <div className="page-shell space-y-4">
       <div className="page-heading">
         <div className="page-kicker">Consulta</div>
         <h1 className="page-title">Historial de pedidos</h1>
       </div>
+
+      {/* Tabs */}
+      <div className="segmented-tabs">
+        <button
+          className={`segmented-tab${activeTab === 'activos' ? ' active' : ''}`}
+          onClick={() => { setActiveTab('activos'); setSearch(''); setStageFilter(''); }}
+        >
+          Activos
+        </button>
+        <button
+          className={`segmented-tab${activeTab === 'archivados' ? ' active' : ''}`}
+          onClick={() => { setActiveTab('archivados'); setSearch(''); setStageFilter(''); }}
+        >
+          Archivados
+        </button>
+      </div>
+
+      {activeTab === 'archivados' && (
+        <div className="alert alert-info text-sm">
+          Los pedidos archivados son aquellos en estado <strong>Suministros entregados</strong> o <strong>Rechazados</strong> que superaron los 3 días sin actividad. Son solo lectura.
+        </div>
+      )}
+
       <div className="flex gap-3 flex-wrap">
         <input value={search} onChange={e => setSearch(e.target.value)} className="input flex-1 min-w-48" placeholder="🔍 Buscar por descripción, área o N°..." />
         <select value={stageFilter} onChange={e => setStageFilter(e.target.value)} className="input w-auto">
@@ -130,30 +179,52 @@ export function HistorialPage() {
         </select>
       </div>
       <div className="card overflow-hidden">
-        {isLoading ? <div className="p-8 text-center text-slate-400">Cargando...</div> : (
+        {isLoading ? <RadaTillyLoader variant="contained" label="Cargando historial" /> : (
           <table className="w-full text-sm">
             <thead>
               <tr>
                 {['N°', 'Descripción', 'Área', 'Estado', 'Monto', 'Fecha'].map(h => (
                   <th key={h} className="px-4 py-3 text-left font-semibold text-slate-500 text-xs uppercase tracking-wide">{h}</th>
                 ))}
+                {activeTab === 'archivados' && (
+                  <th className="px-4 py-3 text-left font-semibold text-slate-500 text-xs uppercase tracking-wide">Archivado</th>
+                )}
               </tr>
             </thead>
             <tbody>
-              {filtered.map(p => (
+              {pageItems.map(p => (
                 <tr key={p.id} onClick={() => navigate(`/pedidos/${p.id}`)} className="hover:bg-slate-50 cursor-pointer transition-colors">
                   <td className="px-4 py-3 font-mono text-xs text-slate-400">{p.numero}</td>
                   <td className="px-4 py-3 font-semibold">{p.descripcion}{p.urgente && <span className="ml-2 badge badge-red text-xs">URG</span>}</td>
                   <td className="px-4 py-3 text-slate-500">{p.area}</td>
-                  <td className="px-4 py-3"><span className={`badge ${stageBadgeClass(p.stage)}`}>{stageIcon(p.stage)} {pedidoEstadoVisibleLabel(p)}</span></td>
+                  <td className="px-4 py-3"><span className={`badge ${stageBadgeClass(p.stage)}`}>{pedidoEstadoVisibleLabel(p)}</span></td>
                   <td className="px-4 py-3 font-mono text-sm">{formatMoney(p.monto)}</td>
                   <td className="px-4 py-3 text-slate-400">{formatDate(p.createdAt)}</td>
+                  {activeTab === 'archivados' && (
+                    <td className="px-4 py-3 text-slate-400">{p.archivedAt ? formatDate(p.archivedAt) : '—'}</td>
+                  )}
                 </tr>
               ))}
+              {pageItems.length === 0 && !isLoading && (
+                <tr>
+                  <td colSpan={activeTab === 'archivados' ? 7 : 6} className="px-4 py-10 text-center text-slate-400 text-sm">
+                    {activeTab === 'archivados' ? 'No hay pedidos archivados todavía.' : 'No se encontraron pedidos.'}
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         )}
       </div>
+      <Pagination
+        page={safePage}
+        totalPages={totalPages}
+        total={filtered.length}
+        start={start}
+        end={end}
+        onPage={setPage}
+        itemLabel="pedidos"
+      />
     </div>
   );
 }
@@ -246,7 +317,7 @@ export function FacturasPage() {
       </div>
 
       {isLoading ? (
-        <div className="card p-8 text-center text-slate-400">Cargando facturas...</div>
+        <RadaTillyLoader variant="contained" label="Cargando facturas" />
       ) : pagos.length === 0 ? (
         <div className="card empty-state">
           <div className="empty-icon">🧾</div>
@@ -292,6 +363,7 @@ export function AdminPedidosPage() {
   const navigate = useNavigate();
   const { data: pedidos = [], isLoading } = useQuery({ queryKey: ['pedidos-admin'], queryFn: () => pedidosApi.getAllAdmin() });
   const [search, setSearch] = useState('');
+  const [page, setPage] = useState(1);
 
   const filtered = pedidos.filter(p =>
     !search || p.descripcion.toLowerCase().includes(search.toLowerCase()) || p.numero.includes(search)
@@ -301,6 +373,16 @@ export function AdminPedidosPage() {
     stage: s,
     count: pedidos.filter((p) => p.stage === s).length,
   }));
+
+  const { page: safePage, totalPages, start, end } = usePagination({
+    total: filtered.length,
+    pageSize: 15,
+    page,
+    setPage,
+    resetDeps: [search],
+  });
+
+  const pageItems = filtered.slice(start, end);
 
   return (
     <div className="page-shell space-y-6">
@@ -321,13 +403,13 @@ export function AdminPedidosPage() {
       <input value={search} onChange={e => setSearch(e.target.value)} className="input" placeholder="🔍 Buscar..." />
 
       <div className="card overflow-hidden">
-        {isLoading ? <div className="p-8 text-center text-slate-400">Cargando...</div> : (
+        {isLoading ? <RadaTillyLoader variant="contained" label="Cargando pedidos" /> : (
           <table className="w-full text-sm">
             <thead>
               <tr>{['N°','Descripción','Área','Responsable','Estado','Monto'].map(h => <th key={h} className="px-4 py-3 text-left font-semibold text-slate-500 text-xs uppercase">{h}</th>)}</tr>
             </thead>
             <tbody>
-              {filtered.map(p => (
+              {pageItems.map(p => (
                 <tr key={p.id} onClick={() => navigate(`/pedidos/${p.id}`)} className="hover:bg-slate-50 cursor-pointer">
                   <td className="px-4 py-3 font-mono text-xs text-slate-400">{p.numero}</td>
                   <td className="px-4 py-3 font-semibold">{p.descripcion}{p.urgente && <span className="ml-1 badge badge-red" style={{fontSize:'9px'}}>URG</span>}</td>
@@ -343,7 +425,7 @@ export function AdminPedidosPage() {
                             ? 'Admin'
                             : '—'}
                   </td>
-                  <td className="px-4 py-3"><span className={`badge ${stageBadgeClass(p.stage)}`}>{stageIcon(p.stage)} {pedidoEstadoVisibleLabel(p)}</span></td>
+                  <td className="px-4 py-3"><span className={`badge ${stageBadgeClass(p.stage)}`}>{pedidoEstadoVisibleLabel(p)}</span></td>
                   <td className="px-4 py-3 font-mono text-sm">{formatMoney(p.monto)}</td>
                 </tr>
               ))}
@@ -351,6 +433,15 @@ export function AdminPedidosPage() {
           </table>
         )}
       </div>
+      <Pagination
+        page={safePage}
+        totalPages={totalPages}
+        total={filtered.length}
+        start={start}
+        end={end}
+        onPage={setPage}
+        itemLabel="pedidos"
+      />
     </div>
   );
 }

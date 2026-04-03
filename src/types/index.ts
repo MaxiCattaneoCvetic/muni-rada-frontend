@@ -80,7 +80,7 @@ export const STAGE_LABELS: Record<number, string> = {
   4: 'Carga de factura (Compras)',
   5: 'Gestión de sellos y pagos',
   6: 'Esperando suministros',
-  7: 'Suministros listos',
+  7: 'Suministros entregados',
   8: 'Rechazados',
 };
 
@@ -154,6 +154,7 @@ export interface Pedido {
   cantidad?: string;
   detalle?: string;
   area: AreaMunicipal;
+  areaDestino?: AreaMunicipal | null;
   urgente: boolean;
   stage: PedidoStage;
   monto?: number;
@@ -171,13 +172,18 @@ export interface Pedido {
   firmaUrlUsada?: string;
   firmaHash?: string;
   firmadoEn?: string;
+  ordenCompraNumero?: string;
+  ordenCompraUrl?: string;
   facturaComprasUrl?: string;
   facturaSubidaPor?: User;
   facturaSubidaEn?: string;
+  fechaLimitePago?: string;
   recepcionConfirmadaPor?: User;
   recepcionEn?: string;
   createdAt: string;
   updatedAt: string;
+  /** Fecha en que el pedido fue archivado. NULL = activo en el kanban. */
+  archivedAt?: string | null;
   /** Cantidad de presupuestos cargados (viene del listado de pedidos). */
   presupuestosCargados?: number;
 }
@@ -240,6 +246,15 @@ export interface ProveedorComentario {
   usuario?: User;
 }
 
+export interface PedidoComentario {
+  id: string;
+  pedidoId: string;
+  usuarioId: string;
+  texto: string;
+  createdAt: string;
+  usuario?: User;
+}
+
 // ── Presupuestos ──────────────────────────────────────────────────────
 export interface Presupuesto {
   id: string;
@@ -277,6 +292,53 @@ export interface Pago {
   facturaUrl?: string;
   registradoPor?: User;
   createdAt: string;
+}
+
+// ── Finanzas ───────────────────────────────────────────────────────────
+export interface GastoFinanzas {
+  id: string;
+  pedidoId: string;
+  pedidoNumero: string;
+  descripcion: string;
+  area: AreaMunicipal;
+  proveedor: string;
+  fechaPago: string;
+  mes: string;
+  montoPagado: number;
+  numeroTransferencia: string;
+  facturaUrl?: string | null;
+}
+
+export interface FinanzasResumenPorMes {
+  mes: string;
+  total: number;
+}
+
+export interface FinanzasResumenPorArea {
+  area: AreaMunicipal;
+  mes: string;
+  total: number;
+}
+
+export interface FinanzasResumenPorProveedor {
+  proveedor: string;
+  mes: string;
+  total: number;
+}
+
+export interface FinanzasResumen {
+  year: number;
+  filters: {
+    area: AreaMunicipal | null;
+    proveedor: string | null;
+  };
+  totalGastado: number;
+  cantidadPagos: number;
+  areaMayorGasto: { area: AreaMunicipal; total: number } | null;
+  proveedorMayorGasto: { proveedor: string; total: number } | null;
+  porMes: FinanzasResumenPorMes[];
+  porArea: FinanzasResumenPorArea[];
+  porProveedor: FinanzasResumenPorProveedor[];
 }
 
 // ── Config ────────────────────────────────────────────────────────────

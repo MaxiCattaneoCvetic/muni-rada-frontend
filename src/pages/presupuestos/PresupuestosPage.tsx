@@ -1,15 +1,20 @@
+import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { pedidosApi } from '../../api/services';
 import { useAuthStore } from '../../store/auth.store';
 import { PedidoStage } from '../../types';
 import { PedidoPresupuestosComprasPanel } from '../../components/presupuestos/PedidoPresupuestosComprasPanel';
+import { Pagination, usePagination } from '../../components/ui/Pagination';
 import { ChevronRight, ArrowLeft } from 'lucide-react';
+
+const PAGE_SIZE = 10;
 
 export function PresupuestosPage() {
   const { pedidoId } = useParams<{ pedidoId: string }>();
   const navigate = useNavigate();
   const { user } = useAuthStore();
+  const [page, setPage] = useState(1);
 
   const { data: pedidosPendientes = [] } = useQuery({
     queryKey: ['pedidos-presupuestos', user?.rol],
@@ -23,7 +28,16 @@ export function PresupuestosPage() {
     enabled: !!pedidoId,
   });
 
+  const { page: safePage, totalPages, start, end } = usePagination({
+    total: pedidosPendientes.length,
+    pageSize: PAGE_SIZE,
+    page,
+    setPage,
+  });
+
   if (!pedidoId) {
+    const pageItems = pedidosPendientes.slice(start, end);
+
     return (
       <div className="page-shell-form">
         <div className="page-heading">
@@ -40,7 +54,7 @@ export function PresupuestosPage() {
               <div className="empty-copy">Cuando Secretaría apruebe un pedido, aparecerá acá.</div>
             </div>
           ) : (
-            pedidosPendientes.map((p) => (
+            pageItems.map((p) => (
               <button
                 key={p.id}
                 type="button"
@@ -63,6 +77,16 @@ export function PresupuestosPage() {
             ))
           )}
         </div>
+
+        <Pagination
+          page={safePage}
+          totalPages={totalPages}
+          total={pedidosPendientes.length}
+          start={start}
+          end={end}
+          onPage={setPage}
+          itemLabel="pedidos"
+        />
       </div>
     );
   }

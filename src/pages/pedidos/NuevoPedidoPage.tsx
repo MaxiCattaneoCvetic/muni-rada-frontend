@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { pedidosApi, usersApi } from '../../api/services';
+import { ButtonSpinner } from '../../components/ui/loading';
 import { areasPedidoSelectOptions, userPuedeCrearPedidos } from '../../lib/utils';
 import { useAuthStore } from '../../store/auth.store';
 import type { AreaMunicipal } from '../../types';
@@ -210,7 +211,7 @@ export function NuevoPedidoPage() {
               Cancelar
             </button>
             <button type="submit" disabled={mut.isPending || !puede} className="btn btn-primary flex-1 justify-center">
-              {mut.isPending ? 'Enviando...' : '✅ Enviar pedido'}
+              {mut.isPending ? <ButtonSpinner label="Enviando" /> : '✅ Enviar pedido'}
             </button>
           </div>
         </form>

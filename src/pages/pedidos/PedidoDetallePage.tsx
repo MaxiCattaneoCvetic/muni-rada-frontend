@@ -1,15 +1,17 @@
 import { useEffect, useState, useMemo, useRef } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { pedidosApi, presupuestosApi, selladosApi, pagosApi } from '../../api/services';
 import { useAuthStore } from '../../store/auth.store';
 import { formatMoney, formatDate, formatDateTime, stageBadgeClass, stageIcon, rolLabel, pedidoEstadoVisibleLabel } from '../../lib/utils';
 import { buildPedidoAuditResumen, buildPedidoAuditTimeline } from '../../lib/pedido-audit';
 import { getCurrentStepMessage } from '../../lib/pedido-flow-messages';
 import { ActionModal } from '../../components/ui/ActionModal';
+import { OcViewerModal } from '../../components/ui/OcViewerModal';
 import { PresupuestoDetalleModal } from '../../components/presupuestos/PresupuestoDetalleModal';
 import { PedidoPresupuestosComprasPanel } from '../../components/presupuestos/PedidoPresupuestosComprasPanel';
-import { ArrowLeft, Clock, CheckCircle, Lock } from 'lucide-react';
+import { ButtonSpinner, RadaTillyLoader } from '../../components/ui/loading';
+import { ArrowLeft, Clock, CheckCircle, Lock, AlertTriangle } from 'lucide-react';
 import type { Presupuesto } from '../../types';
 import { PedidoStage, STAGE_OWNER_LABELS } from '../../types';
 
@@ -34,9 +36,8 @@ export function PedidoDetallePage() {
     'flujo' | 'presupuestos' | 'comentarios' | 'documentos' | 'info' | 'auditoria'
   >('flujo');
   const [chatInput, setChatInput] = useState('');
-  const [chatMessages, setChatMessages] = useState<CommentItem[]>([]);
-  const [chatLoaded, setChatLoaded] = useState(false);
   const [presupuestoParaFirmaId, setPresupuestoParaFirmaId] = useState<string | null>(null);
+  const [showOcViewer, setShowOcViewer] = useState(false);
   const prevPedidoIdRef = useRef<string | undefined>(undefined);
   const location = useLocation();
 
@@ -59,6 +60,18 @@ export function PedidoDetallePage() {
     queryFn: () => pagosApi.getByPedido(id!),
     enabled: !!id,
   });
+  const { data: apiComentarios = [] } = useQuery({
+    queryKey: ['comentarios', id],
+    queryFn: () => pedidosApi.getComentarios(id!),
+    enabled: !!id,
+  });
+  const addComentarioMutation = useMutation({
+    mutationFn: (texto: string) => pedidosApi.addComentario(id!, texto),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['comentarios', id] });
+      setChatInput('');
+    },
+  });
 
   const presupuestosMenorValorIds = useMemo(() => {
     if (presupuestos.length === 0) return new Set<string>();
@@ -80,19 +93,7 @@ export function PedidoDetallePage() {
     }
   }, [pedido]);
 
-  useEffect(() => {
-    if (!pedido || pedido.stage !== PedidoStage.FIRMA || presupuestos.length === 0) return;
-    setPresupuestoParaFirmaId((prev) => {
-      if (prev != null && presupuestos.some((p) => p.id === prev)) return prev;
-      const match = presupuestos.find(
-        (p) =>
-          pedido.proveedorSeleccionado &&
-          p.proveedor === pedido.proveedorSeleccionado &&
-          Number(p.monto) === Number(pedido.monto ?? NaN),
-      );
-      return match?.id ?? prev;
-    });
-  }, [pedido, presupuestos]);
+  // No auto-selection: the secretario must explicitly choose a presupuesto in the tab.
 
   const refetch = () => {
     qc.invalidateQueries({ queryKey: ['pedido', id] });
@@ -105,37 +106,7 @@ export function PedidoDetallePage() {
   const fullName = (person?: { nombreCompleto?: string; nombre?: string; apellido?: string }) =>
     person?.nombreCompleto || [person?.nombre, person?.apellido].filter(Boolean).join(' ') || '—';
 
-  const storageKey = id ? `pedido-chat:${id}` : null;
-
-  useEffect(() => {
-    if (!storageKey) {
-      setChatMessages([]);
-      setChatLoaded(false);
-      return;
-    }
-
-    const stored = localStorage.getItem(storageKey);
-    if (!stored) {
-      setChatMessages([]);
-      setChatLoaded(true);
-      return;
-    }
-
-    try {
-      const parsed = JSON.parse(stored) as CommentItem[];
-      setChatMessages(Array.isArray(parsed) ? parsed : []);
-    } catch {
-      setChatMessages([]);
-    }
-    setChatLoaded(true);
-  }, [storageKey]);
-
-  useEffect(() => {
-    if (!chatLoaded || !storageKey) return;
-    localStorage.setItem(storageKey, JSON.stringify(chatMessages));
-  }, [chatLoaded, chatMessages, storageKey]);
-
-  if (isLoading) return <div className="p-8 text-center text-slate-400">Cargando expediente...</div>;
+  if (isLoading) return <RadaTillyLoader variant="contained" label="Cargando expediente" />;
   if (!pedido) return <div className="p-8 text-center text-red-500">Pedido no encontrado</div>;
 
   const stageColors: Record<number, string> = {
@@ -293,7 +264,7 @@ export function PedidoDetallePage() {
     },
     {
       stage: PedidoStage.SUMINISTROS_LISTOS,
-      label: 'Suministros listos',
+      label: 'Suministros entregados',
       icon: '✅',
       owner: STAGE_OWNER_LABELS[PedidoStage.SUMINISTROS_LISTOS],
       detail: getHistoricalDetail(PedidoStage.SUMINISTROS_LISTOS),
@@ -425,6 +396,15 @@ export function PedidoDetallePage() {
     });
   }
 
+  const chatMessages: CommentItem[] = apiComentarios.map(c => ({
+    id: c.id,
+    actor: c.usuario ? [c.usuario.nombre, c.usuario.apellido].filter(Boolean).join(' ') : 'Usuario',
+    area: c.usuario ? rolLabel(c.usuario.rol) : '—',
+    detail: c.texto,
+    createdAt: c.createdAt,
+    kind: 'chat' as const,
+  }));
+
   const comments = [...historyComments, ...chatMessages].sort(
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
   );
@@ -433,21 +413,9 @@ export function PedidoDetallePage() {
   const auditResumen = buildPedidoAuditResumen(pedido, presupuestos);
 
   const handleSendMessage = () => {
-    const detail = chatInput.trim();
-    if (!detail || !user) return;
-
-    setChatMessages(current => [
-      ...current,
-      {
-        id: crypto.randomUUID(),
-        actor: fullName(user),
-        area: currentAreaLabel,
-        detail,
-        createdAt: new Date().toISOString(),
-        kind: 'chat',
-      },
-    ]);
-    setChatInput('');
+    const texto = chatInput.trim();
+    if (!texto || !user) return;
+    addComentarioMutation.mutate(texto);
   };
 
   const canAprobar = (user?.rol === 'secretaria' || user?.rol === 'admin') && pedido.stage === PedidoStage.APROBACION;
@@ -482,10 +450,9 @@ export function PedidoDetallePage() {
               {pedido.bloqueado && <span className="badge badge-red"><Lock size={10} /> Bloqueado</span>}
             </div>
             <h1 className="text-2xl font-black text-slate-900 tracking-tight">{pedido.descripcion}</h1>
-            {pedido.cantidad && <p className="text-slate-500 text-sm mt-0.5">{pedido.cantidad}</p>}
             <div className="flex items-center gap-3 mt-2 flex-wrap">
               <span className="text-sm text-slate-500">📍 {pedido.area}</span>
-              <span className={`badge ${stageBadgeClass(pedido.stage)}`}>
+              <span data-testid="stage-badge" className={`badge ${stageBadgeClass(pedido.stage)}`}>
                 {stageIcon(pedido.stage)} {pedidoEstadoVisibleLabel(pedido)}
               </span>
             </div>
@@ -498,6 +465,95 @@ export function PedidoDetallePage() {
           )}
         </div>
 
+        {/* Quick-info strip */}
+        <div className="mt-4 pt-4 border-t border-slate-100 grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-3">
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Pedido solicitado para</div>
+            <div className="text-sm font-semibold text-slate-800 mt-0.5">{pedido.area}</div>
+          </div>
+          {pedido.areaDestino && (
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Destino del suministro</div>
+              <div className="text-sm font-semibold text-slate-800 mt-0.5">{pedido.areaDestino}</div>
+            </div>
+          )}
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Solicitado por</div>
+            <div className="text-sm font-semibold text-slate-800 mt-0.5">{fullName(pedido.creadoPor)}</div>
+            <div className="text-xs text-slate-500">
+              {pedido.creadoPor?.areaAsignada && (
+                <span>{pedido.creadoPor.areaAsignada} · </span>
+              )}
+              {formatDate(pedido.createdAt)}
+            </div>
+          </div>
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Equipo actual del solicitante</div>
+            <div className="text-sm font-semibold text-slate-800 mt-0.5">{STAGE_OWNER_LABELS[pedido.stage] || '—'}</div>
+          </div>
+          {pedido.detalle && (
+            <div className="col-span-2 sm:col-span-4">
+              <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-1">Mas detalles del pedido</div>
+              <div className="text-sm text-slate-700 bg-white/70 rounded-lg border border-slate-100 px-3 py-2 leading-relaxed whitespace-pre-wrap">{pedido.detalle}</div>
+            </div>
+          )}
+          {pedido.cantidad && (
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Cantidad / especificación</div>
+              <div className="text-sm text-slate-700 mt-0.5">{pedido.cantidad}</div>
+            </div>
+          )}
+          {pedido.fechaLimitePago && (
+            <div>
+              <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400">Fecha límite de pago</div>
+              <div className="text-sm font-semibold mt-0.5" style={{ color: 'var(--teal)' }}>
+                🗓 {formatDate(pedido.fechaLimitePago)}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Fecha límite de pago alert */}
+        {pedido.fechaLimitePago && pedido.stage === PedidoStage.GESTION_PAGOS && (() => {
+          const today = new Date(); today.setHours(0, 0, 0, 0);
+          const due = new Date(pedido.fechaLimitePago + 'T00:00:00');
+          const diff = Math.round((due.getTime() - today.getTime()) / 86_400_000);
+          const vencido = diff < 0;
+          const hoy = diff === 0;
+          const proximo = diff > 0 && diff <= 3;
+          if (!vencido && !hoy && !proximo) return null;
+          return (
+            <div
+              className="mt-4 flex items-start gap-2.5 rounded-xl px-4 py-3"
+              style={{
+                background: vencido || hoy ? 'var(--red-lt)' : 'var(--amber-lt)',
+                border: `1px solid ${vencido || hoy ? 'var(--red-brd)' : 'var(--amber-brd)'}`,
+              }}
+            >
+              <AlertTriangle
+                size={16}
+                className="shrink-0 mt-0.5"
+                style={{ color: vencido || hoy ? 'var(--red)' : 'var(--amber)' }}
+              />
+              <div>
+                <p
+                  className="font-extrabold"
+                  style={{ fontSize: '13px', color: vencido || hoy ? 'var(--red)' : 'var(--amber)' }}
+                >
+                  {vencido
+                    ? `Pago vencido hace ${Math.abs(diff)} día${Math.abs(diff) !== 1 ? 's' : ''}`
+                    : hoy
+                      ? 'El pago vence hoy'
+                      : `El pago vence en ${diff} día${diff !== 1 ? 's' : ''}`}
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: vencido || hoy ? 'var(--red)' : 'var(--amber)', opacity: .85 }}>
+                  Fecha límite: {formatDate(pedido.fechaLimitePago)}
+                </p>
+              </div>
+            </div>
+          );
+        })()}
+
         {/* Action buttons */}
         <div className="flex flex-wrap gap-2 mt-5 pt-4 border-t border-slate-100">
           {canGestionarPresupuestos && (
@@ -506,17 +562,20 @@ export function PedidoDetallePage() {
             </button>
           )}
           {canAprobar && <button onClick={() => setModal('aprobar')} className="btn btn-primary btn-sm">✅ Aprobar</button>}
-          {canFirmar && (
+          {canFirmar && !presupuestoElegidoFirma && (
+            <button
+              type="button"
+              onClick={() => setActiveTab('presupuestos')}
+              className="btn btn-ghost btn-sm"
+            >
+              📋 Ver presupuestos
+            </button>
+          )}
+          {canFirmar && presupuestoElegidoFirma && (
             <button
               type="button"
               onClick={() => setModal('firmar')}
-              disabled={!presupuestoElegidoFirma}
-              title={
-                presupuestoElegidoFirma
-                  ? undefined
-                  : 'Elegí primero la cotización en la pestaña Presupuestos.'
-              }
-              className="btn btn-primary btn-sm disabled:opacity-45 disabled:cursor-not-allowed"
+              className="btn btn-primary btn-sm"
             >
               ✍️ Firmar presupuesto
             </button>
@@ -526,6 +585,15 @@ export function PedidoDetallePage() {
           {canPago && <button onClick={() => setModal('pago')} className="btn btn-success btn-sm">💳 Registrar pago</button>}
           {canRecepcion && <button onClick={() => setModal('confirmar-recepcion')} className="btn btn-success btn-sm">📦 Confirmar recepción</button>}
           {canRechazar && <button onClick={() => setModal('rechazar')} className="btn btn-danger btn-sm">✗ Rechazar</button>}
+          {!!pedido.ordenCompraUrl && !!pedido.ordenCompraNumero && (
+            <button
+              type="button"
+              onClick={() => setShowOcViewer(true)}
+              className="btn btn-ghost btn-sm gap-1.5"
+            >
+              📋 Ver orden de compra
+            </button>
+          )}
         </div>
       </div>
 
@@ -704,10 +772,10 @@ export function PedidoDetallePage() {
               />
               <button
                 onClick={handleSendMessage}
-                disabled={!chatInput.trim() || !user}
+                disabled={!chatInput.trim() || !user || addComentarioMutation.isPending}
                 className="btn btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Enviar
+                {addComentarioMutation.isPending ? <ButtonSpinner label="Enviando" /> : 'Enviar'}
               </button>
             </div>
           </div>
@@ -755,12 +823,17 @@ export function PedidoDetallePage() {
                 )}
                 {presupuestos.map((p, i) => {
                   const esElegidoFirma = canFirmar && presupuestoParaFirmaId === p.id;
+                  const esSeleccionado = !canFirmar &&
+                    pedido.proveedorSeleccionado === p.proveedor &&
+                    (pedido.monto == null || Number(p.monto) === Number(pedido.monto));
                   const menorValor = presupuestosMenorValorIds.has(p.id);
                   const borderClass = canFirmar
                     ? esElegidoFirma
                       ? 'border-l-blue-500 ring-2 ring-blue-200/90 bg-blue-50/50'
                       : 'border-l-slate-300 bg-white hover:border-l-slate-400'
-                    : 'border-l-green-400 hover:shadow-md hover:-translate-y-0.5';
+                    : esSeleccionado
+                      ? 'border-l-green-500 bg-green-50/40'
+                      : 'border-l-slate-200 opacity-45 hover:opacity-75';
                   return (
                     <div
                       key={p.id}
@@ -787,10 +860,12 @@ export function PedidoDetallePage() {
                                 ? esElegidoFirma
                                   ? 'bg-blue-600 border-blue-700 text-white'
                                   : 'bg-slate-100 border-slate-300 text-slate-600'
-                                : 'bg-green-100 border-green-300 text-green-700'
+                                : esSeleccionado
+                                  ? 'bg-green-600 border-green-700 text-white'
+                                  : 'bg-slate-100 border-slate-200 text-slate-400'
                             }`}
                           >
-                            {canFirmar && esElegidoFirma ? '✓' : i + 1}
+                            {(canFirmar && esElegidoFirma) || (!canFirmar && esSeleccionado) ? '✓' : i + 1}
                           </div>
                           <div className="min-w-0">
                             <div className="font-bold text-slate-800 truncate">{p.proveedor}</div>
@@ -821,9 +896,9 @@ export function PedidoDetallePage() {
                               Sin firmar — No seleccionado
                             </span>
                           ))}
-                        {!canFirmar && pedido.proveedorSeleccionado === p.proveedor && (
-                          <span className="inline-flex items-center gap-1 text-xs font-bold text-green-700 bg-green-100 px-2.5 py-1 rounded-full">
-                            Seleccionado por Compras
+                        {esSeleccionado && (
+                          <span className="inline-flex items-center gap-1 text-xs font-bold text-green-700 bg-green-100 border border-green-200 px-2.5 py-1 rounded-full">
+                            ✓ Seleccionado
                           </span>
                         )}
                       </div>
@@ -879,6 +954,28 @@ export function PedidoDetallePage() {
               <div className="text-xs text-slate-400 mt-1 font-mono">{pedido.firmaHash}</div>
             </div>
           )}
+          {/* Orden de Compra */}
+          {pedido.ordenCompraUrl && (
+            <div className="info-panel" style={{ borderColor: 'var(--blue-brd)', background: 'linear-gradient(135deg,#dbeafe,#eff6ff)' }}>
+              <div className="text-xs font-bold uppercase mb-2" style={{ color: 'var(--blue)' }}>📋 Orden de Compra</div>
+              <div className="flex items-center justify-between gap-3 flex-wrap">
+                <div>
+                  <div className="font-mono font-bold text-sm" style={{ color: 'var(--text)' }}>{pedido.ordenCompraNumero}</div>
+                  {pedido.firmadoEn && (
+                    <div className="text-xs text-slate-500 mt-0.5">Emitida el {formatDateTime(pedido.firmadoEn)}</div>
+                  )}
+                </div>
+                <a
+                  href={pedido.ordenCompraUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="btn btn-primary btn-sm gap-1.5"
+                >
+                  📄 Descargar OC
+                </a>
+              </div>
+            </div>
+          )}
           {pedido.facturaComprasUrl && (
             <div className="info-panel" style={{ borderColor: 'var(--purple-brd)', background: 'linear-gradient(135deg,#ede9fe,#f5f3ff)' }}>
               <div className="text-xs font-bold uppercase mb-2" style={{ color: 'var(--purple)' }}>🧾 Factura del proveedor (Compras)</div>
@@ -930,9 +1027,10 @@ export function PedidoDetallePage() {
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div><div className="info-pair-label">N° Pedido</div><div className="info-pair-value font-mono">{pedido.numero}</div></div>
             <div><div className="info-pair-label">Estado actual</div><div className="info-pair-value">{stageIcon(pedido.stage)} {pedidoEstadoVisibleLabel(pedido)}</div></div>
-            <div><div className="info-pair-label">Solicitado por</div><div className="info-pair-value">{fullName(pedido.creadoPor)}</div></div>
+            <div><div className="info-pair-label">Solicitado por</div><div className="info-pair-value">{fullName(pedido.creadoPor)}{pedido.creadoPor?.areaAsignada && ` (${pedido.creadoPor.areaAsignada})`}</div></div>
             <div><div className="info-pair-label">Fecha creación</div><div className="info-pair-value">{formatDate(pedido.createdAt)}</div></div>
             <div><div className="info-pair-label">Área solicitante</div><div className="info-pair-value">{pedido.area}</div></div>
+            {pedido.areaDestino && <div><div className="info-pair-label">Destino del suministro</div><div className="info-pair-value">{pedido.areaDestino}</div></div>}
             <div><div className="info-pair-label">Equipo actual</div><div className="info-pair-value">{STAGE_OWNER_LABELS[pedido.stage] || '—'}</div></div>
             {pedido.monto != null && <div><div className="info-pair-label">Monto</div><div className="info-pair-value">{formatMoney(pedido.monto)}</div></div>}
             {pedido.proveedorSeleccionado && <div><div className="info-pair-label">Proveedor seleccionado</div><div className="info-pair-value">{pedido.proveedorSeleccionado}</div></div>}
@@ -940,6 +1038,17 @@ export function PedidoDetallePage() {
             {pedido.firmadoPor && <div><div className="info-pair-label">Firmado por</div><div className="info-pair-value">{fullName(pedido.firmadoPor)}</div></div>}
             {pedido.detalle && <div className="col-span-2"><div className="info-pair-label">Detalle</div><div className="info-pair-value">{pedido.detalle}</div></div>}
             {pedido.firmaHash && <div className="col-span-2"><div className="info-pair-label">Hash firma</div><div className="font-mono text-xs text-slate-600 mt-1">{pedido.firmaHash}</div></div>}
+            {pedido.ordenCompraNumero && (
+              <div className="col-span-2">
+                <div className="info-pair-label">Orden de Compra</div>
+                <div className="info-pair-value flex items-center gap-2">
+                  <span className="font-mono">{pedido.ordenCompraNumero}</span>
+                  {pedido.ordenCompraUrl && (
+                    <a href={pedido.ordenCompraUrl} target="_blank" rel="noreferrer" className="doc-link text-xs">📄 Ver PDF →</a>
+                  )}
+                </div>
+              </div>
+            )}
             {pedido.stage === PedidoStage.RECHAZADO && pedido.notaRechazo && (
               <div className="col-span-2"><div className="info-pair-label">Motivo del rechazo</div><div className="info-pair-value whitespace-pre-wrap">{pedido.notaRechazo}</div></div>
             )}
@@ -972,6 +1081,15 @@ export function PedidoDetallePage() {
           rechazarMeta={modal === 'rechazar' ? { presupuestosCargados: presupuestos.length } : null}
           onClose={() => setModal(null)}
           onSuccess={() => { setModal(null); refetch(); }}
+        />
+      )}
+
+      {showOcViewer && pedido.ordenCompraUrl && pedido.ordenCompraNumero && (
+        <OcViewerModal
+          url={pedido.ordenCompraUrl}
+          numero={pedido.ordenCompraNumero}
+          pedidoNumero={pedido.numero}
+          onClose={() => setShowOcViewer(false)}
         />
       )}
     </div>

@@ -3,6 +3,7 @@ import { useMutation } from '@tanstack/react-query';
 import { usersApi } from '../../api/services';
 import { useAuthStore } from '../../store/auth.store';
 import { Upload, CheckCircle } from 'lucide-react';
+import { ButtonSpinner } from '../../components/ui/loading';
 
 export function MiPerfilPage() {
   const { user, updateUser } = useAuthStore();
@@ -84,8 +85,7 @@ export function MiPerfilPage() {
             disabled={firmaMut.isPending}
             className="btn btn-ghost w-full justify-center gap-2 py-3 border-dashed"
           >
-            <Upload size={16} />
-            {firmaMut.isPending ? 'Subiendo...' : user?.firmaUrl ? 'Reemplazar firma' : 'Subir firma escaneada'}
+            {firmaMut.isPending ? <ButtonSpinner label="Subiendo" /> : <><Upload size={16} />{user?.firmaUrl ? 'Reemplazar firma' : 'Subir firma escaneada'}</>}
           </button>
           <p className="text-xs text-slate-400">Formatos: JPG, PNG, PDF · Máx 5MB</p>
         </div>

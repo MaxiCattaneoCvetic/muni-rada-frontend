@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useNavigate } from 'react-router-dom';
 import { proveedoresApi } from '../../api/services';
+import { ButtonSpinner } from '../../components/ui/loading';
 import type { CreateProveedorDto } from '../../types';
 import { ArrowLeft, Check, ChevronRight, ClipboardList, MapPin, Phone, Scale, UserRound } from 'lucide-react';
 import {
@@ -405,7 +406,7 @@ export function ProveedorAltaWizardPage() {
                 onClick={submit}
                 disabled={mut.isPending}
               >
-                {mut.isPending ? 'Guardando…' : 'Guardar proveedor'}
+                {mut.isPending ? <ButtonSpinner label="Guardando" /> : 'Guardar proveedor'}
               </button>
             )}
           </div>

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
 import { authApi } from '../../api/services';
+import { ButtonSpinner } from '../../components/ui/loading';
 
 export default function LoginPage() {
   const navigate = useNavigate();
@@ -143,7 +144,7 @@ export default function LoginPage() {
               disabled={loading}
               className="btn btn-primary w-full justify-center py-3 text-sm font-bold mt-2"
             >
-              {loading ? 'Ingresando...' : 'Ingresar'}
+              {loading ? <ButtonSpinner label="Ingresando" /> : 'Ingresar'}
             </button>
           </form>
 

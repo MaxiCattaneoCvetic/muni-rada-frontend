@@ -13,6 +13,7 @@ import {
   demoRoleHeaderActive,
 } from '../../lib/demo-role-icons';
 import { Menu } from 'lucide-react';
+import { SpeedDialFAB } from './SpeedDialFAB';
 
 const DEMO_ROLES = ['secretaria', 'compras', 'tesoreria', 'admin'] as const satisfies readonly UserRole[];
 
@@ -23,23 +24,29 @@ const NAV_BY_ROLE: Record<string, { icon: string; label: string; to: string; bad
     { icon: '✍️', label: 'Firmar presupuesto', to: '/firmar', badgeKey: 'firmar' },
     { icon: '📦', label: 'Historial de pedidos', to: '/historial' },
     { icon: '🏪', label: 'Proveedores', to: '/proveedores' },
+    { icon: '🎫', label: 'Mis reportes', to: '/mis-reportes' },
   ],
   compras: [
     { icon: '🏠', label: 'Inicio', to: '/dashboard' },
     { icon: '💰', label: 'Presupuestos', to: '/presupuestos', badgeKey: 'presupuestos' },
     { icon: '🏪', label: 'Proveedores', to: '/proveedores' },
+    { icon: '🎫', label: 'Mis reportes', to: '/mis-reportes' },
   ],
   tesoreria: [
     { icon: '🏠', label: 'Inicio', to: '/dashboard' },
     { icon: '💳', label: 'Pagos y sellados', to: '/pagos', badgeKey: 'pagos' },
     { icon: '🧾', label: 'Facturas por vencer', to: '/facturas', badgeKey: 'facturas' },
+    { icon: '💸', label: 'Finanzas', to: '/finanzas' },
+    { icon: '🎫', label: 'Mis reportes', to: '/mis-reportes' },
   ],
   admin: [
     { icon: '🏠', label: 'Inicio', to: '/dashboard' },
     { icon: '📦', label: 'Todos los pedidos', to: '/admin/pedidos' },
     { icon: '🏪', label: 'Proveedores', to: '/proveedores' },
     { icon: '👥', label: 'Usuarios', to: '/admin/usuarios' },
-    { icon: '📊', label: 'Reportes', to: '/admin/reportes' },
+    { icon: '💸', label: 'Finanzas', to: '/finanzas' },
+    { icon: '🛟', label: 'Tickets de soporte', to: '/admin/reportes' },
+    { icon: '🎫', label: 'Mis reportes', to: '/mis-reportes' },
     { icon: '⚙️', label: 'Configuración', to: '/admin/config' },
   ],
 };
@@ -238,7 +245,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         {/* Topbar */}
         <header 
           className={cn(
-            'grid flex-shrink-0 items-center px-5 gap-x-3 z-10',
+            'grid flex-shrink-0 items-center px-3 sm:px-5 gap-x-2 sm:gap-x-3 z-10',
             isDemoMode()
               ? 'grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)]'
               : 'grid-cols-[minmax(0,1fr)_minmax(0,1fr)]',
@@ -422,33 +429,14 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
         </header>
 
         {/* Content */}
-        <main 
-          className="flex-1 overflow-y-auto w-full min-w-0"
-          style={{ padding: '24px' }}
-        >
-          {children}
+        <main className="flex-1 overflow-y-auto w-full min-w-0 p-3 sm:p-4 md:p-5 lg:p-6 xl:p-8">
+          <div className="mx-auto w-full max-w-[1520px]">
+            {children}
+          </div>
         </main>
       </div>
 
-      {/* FAB - Nuevo Pedido */}
-      <button
-        onClick={() => navigate('/nuevo-pedido')}
-        className="fixed bottom-6 right-6 z-30 flex items-center gap-2 text-white font-bold px-5 py-3.5 rounded-full transition-all hover:-translate-y-1 active:scale-95"
-        style={{
-          background: 'var(--gradient-blue)',
-          boxShadow: 'var(--shadow-blue)',
-          fontSize: '13px',
-        }}
-        onMouseEnter={(e) => {
-          e.currentTarget.style.boxShadow = '0 6px 20px rgba(59,130,246,.35)';
-        }}
-        onMouseLeave={(e) => {
-          e.currentTarget.style.boxShadow = 'var(--shadow-blue)';
-        }}
-      >
-        <span className="text-lg leading-none">＋</span>
-        <span>Nuevo pedido</span>
-      </button>
+      <SpeedDialFAB />
     </div>
   );
 }
