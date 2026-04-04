@@ -17,6 +17,7 @@ import {
   Package,
   ShieldAlert,
   Ban,
+  ExternalLink,
 } from 'lucide-react';
 import { ButtonSpinner } from './loading';
 import { StepSuccessModal } from './StepSuccessModal';

@@ -58,18 +58,6 @@ export function AdminConfigPage() {
           />
           <p className="text-xs text-slate-400 mt-1">Tope absoluto: no se pueden cargar más presupuestos que este número (máx. 5).</p>
         </div>
-        <div>
-          <label className="label">Mínimo de cotizaciones para enviar a Secretaría</label>
-          <input
-            type="number"
-            min={1}
-            max={5}
-            defaultValue={config.minPresupuestos}
-            onChange={e => setForm((f: any) => ({ ...(f || config), minPresupuestos: parseInt(e.target.value, 10) }))}
-            className="input"
-          />
-          <p className="text-xs text-slate-400 mt-1">Debe ser menor o igual al máximo.</p>
-        </div>
         <div className="flex items-center gap-3">
           <div
             onClick={() => setForm((f: any) => ({ ...(f || config), bloquearPagoSinSellado: !cfg?.bloquearPagoSinSellado }))}

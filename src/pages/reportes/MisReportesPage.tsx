@@ -274,13 +274,13 @@ export function MisReportesPage() {
       {reportes.length > 0 && (
         <div className="grid grid-cols-4 gap-2 anim">
           {[
-            { label: 'Pendientes',  value: pendientes, ...ESTADO_META['pendiente'] },
-            { label: 'En proceso',  value: enProceso,  ...ESTADO_META['en_proceso'] },
-            { label: 'Resueltos',   value: resueltos,  ...ESTADO_META['solucionado'] },
-            { label: 'Cerrados',    value: cerrados,   ...ESTADO_META['cerrado'] },
-          ].map(({ label, value, colorText, colorBg, colorBorder, icon }) => (
+            { customLabel: 'Pendientes',  value: pendientes, ...ESTADO_META['pendiente'] },
+            { customLabel: 'En proceso',  value: enProceso,  ...ESTADO_META['en_proceso'] },
+            { customLabel: 'Resueltos',   value: resueltos,  ...ESTADO_META['solucionado'] },
+            { customLabel: 'Cerrados',    value: cerrados,   ...ESTADO_META['cerrado'] },
+          ].map(({ customLabel, value, colorText, colorBg, colorBorder, icon }) => (
             <div
-              key={label}
+              key={customLabel}
               className="flex flex-col items-center gap-1 py-3 px-2 rounded-xl"
               style={{ background: colorBg, border: `1px solid ${colorBorder}` }}
             >
@@ -289,7 +289,7 @@ export function MisReportesPage() {
                 {value}
               </div>
               <div className="font-semibold text-center leading-tight" style={{ fontSize: '11px', color: colorText }}>
-                {label}
+                {customLabel}
               </div>
             </div>
           ))}

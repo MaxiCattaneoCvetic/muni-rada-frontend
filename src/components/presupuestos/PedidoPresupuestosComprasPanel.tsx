@@ -57,11 +57,7 @@ export function PedidoPresupuestosComprasPanel({
     queryFn: () => configApi.get(),
     staleTime: 60_000,
   });
-  const { minPresup, maxPresup } = (() => {
-    const max = sistemaConfig?.maxPresupuestos ?? 5;
-    const rawMin = sistemaConfig?.minPresupuestos ?? 3;
-    return { minPresup: Math.min(rawMin, max), maxPresup: max };
-  })();
+  const maxPresup = sistemaConfig?.maxPresupuestos ?? 5;
 
   const [showCargaModal, setShowCargaModal] = useState(false);
   const [error, setError] = useState('');
@@ -87,7 +83,7 @@ export function PedidoPresupuestosComprasPanel({
     onError: (e) => setError(formatApiError(e)),
   });
 
-  const listo = presupuestos.length >= minPresup;
+  const listo = presupuestos.length >= 1;
   const wrongStage = pedido && pedido.stage !== PedidoStage.PRESUPUESTOS;
 
   if (!pedido) {
@@ -143,8 +139,7 @@ export function PedidoPresupuestosComprasPanel({
           </div>
           {!listo && (
             <div className="alert alert-warning mt-3 mb-0">
-              ⏳ Faltan {minPresup - presupuestos.length} presupuesto{minPresup - presupuestos.length !== 1 ? 's' : ''}{' '}
-              para poder enviar a Secretaría
+              ⏳ Necesitas cargar al menos 1 presupuesto para poder enviar a Secretaría
             </div>
           )}
           {error && <div className="alert alert-danger mt-3 mb-0">{error}</div>}
@@ -156,8 +151,7 @@ export function PedidoPresupuestosComprasPanel({
           <div>
             {!listo && (
               <p className="text-sm text-amber-800 m-0">
-                Faltan {minPresup - presupuestos.length} presupuesto{minPresup - presupuestos.length !== 1 ? 's' : ''} para
-                enviar a Secretaría.
+                Necesitas cargar al menos 1 presupuesto para enviar a Secretaría.
               </p>
             )}
             {listo && <p className="text-sm text-green-800 m-0">Listo para enviar a Secretaría.</p>}
@@ -181,13 +175,12 @@ export function PedidoPresupuestosComprasPanel({
           <span className="text-sm font-semibold text-slate-700">Presupuestos cargados</span>
           <span className="text-sm font-bold text-blue-600 font-mono tabular-nums">
             {presupuestos.length} / {maxPresup}
-            <span className="text-xs font-semibold text-slate-500 ml-2">(mín. {minPresup} para enviar)</span>
           </span>
         </div>
         <div className="h-2 rounded-full overflow-hidden" style={{ background: 'var(--surface2)' }}>
           <div
             className={`h-full rounded-full transition-all ${listo ? 'bg-green-500' : 'bg-blue-500'}`}
-            style={{ width: `${Math.min((presupuestos.length / minPresup) * 100, 100)}%` }}
+            style={{ width: `${presupuestos.length > 0 ? Math.min((presupuestos.length / maxPresup) * 100, 100) : 0}%` }}
           />
         </div>
         {presupuestos.length >= maxPresup && (

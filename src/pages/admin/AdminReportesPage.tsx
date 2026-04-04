@@ -118,7 +118,6 @@ function StatCard({ label, value, icon, color }: { label: string; value: number;
 
 function TicketRow({ ticket, onSelect }: { ticket: Reporte; onSelect: () => void }) {
   const tipo      = TIPO_META[ticket.tipo];
-  const prioridad = PRIORIDAD_META[ticket.prioridad];
   const estado    = ESTADO_META[ticket.estado];
 
   return (
@@ -404,7 +403,6 @@ export function AdminReportesPage() {
   const total      = reportes.length;
   const pendientes = reportes.filter((r) => r.estado === 'pendiente' || r.estado === 'abierto').length;
   const enProceso  = reportes.filter((r) => r.estado === 'en_proceso').length;
-  const cerrados   = reportes.filter((r) => r.estado === 'cerrado').length;
   const resueltos  = reportes.filter((r) => r.estado === 'solucionado' || r.estado === 'resuelto').length;
 
   // normaliza estados legacy para que los filtros sean consistentes

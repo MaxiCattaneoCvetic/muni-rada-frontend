@@ -11,8 +11,6 @@ interface Props {
   onPedidoClick: (pedido: Pedido) => void;
   onAction: (pedido: Pedido, action: string) => void;
   visibleStages?: number[];
-  /** Mínimo de presupuestos requeridos para enviar a Secretaría. Default 3. */
-  minPresupuestos?: number;
   /** Máximo de cotizaciones por pedido (tope). Default 5. */
   maxPresupuestos?: number;
 }
@@ -77,12 +75,10 @@ function ActionButton({
   pedido,
   rol,
   onAction,
-  minPresupuestos = 3,
 }: {
   pedido: Pedido;
   rol: string;
   onAction: (p: Pedido, a: string) => void;
-  minPresupuestos?: number;
 }) {
   if (rol === 'secretaria') {
     if (pedido.stage === PedidoStage.APROBACION)
@@ -106,7 +102,7 @@ function ActionButton({
   }
   if (rol === 'compras' && pedido.stage === PedidoStage.PRESUPUESTOS) {
     const n = pedido.presupuestosCargados ?? 0;
-    const listo = n >= minPresupuestos;
+    const listo = n >= 1;
     return (
       <button
         onClick={e => { e.stopPropagation(); onAction(pedido, 'cargar-presupuesto'); }}
@@ -229,7 +225,6 @@ export function KanbanBoard({
   onPedidoClick,
   onAction,
   visibleStages,
-  minPresupuestos = 3,
   maxPresupuestos = 5,
 }: Props) {
   const { user } = useAuthStore();
@@ -632,7 +627,7 @@ export function KanbanBoard({
                   })();
 
                   const filled = p.presupuestosCargados ?? 0;
-                  const isPresupuestoReady = filled >= minPresupuestos;
+                  const isPresupuestoReady = filled >= 1;
 
                   return (
                     <div
@@ -773,7 +768,6 @@ export function KanbanBoard({
                             pedido={p}
                             rol={user?.rol || ''}
                             onAction={onAction}
-                            minPresupuestos={minPresupuestos}
                           />
                         </div>
                       )}

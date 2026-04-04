@@ -65,7 +65,6 @@ export default function DashboardPage({ mode = 'dashboard' }: { mode?: Dashboard
     staleTime: 60_000,
   });
   const maxPresupuestos = sistemaConfig?.maxPresupuestos ?? 5;
-  const minPresupuestos = Math.min(sistemaConfig?.minPresupuestos ?? 3, maxPresupuestos);
 
   const focusedStage = user?.rol === 'secretaria' ? MODE_STAGE[mode] : undefined;
   const displayPedidos = focusedStage
@@ -331,7 +330,6 @@ export default function DashboardPage({ mode = 'dashboard' }: { mode?: Dashboard
               onPedidoClick={p => navigate(`/pedidos/${p.id}`)}
               onAction={handleAction}
               visibleStages={visibleStages}
-              minPresupuestos={minPresupuestos}
               maxPresupuestos={maxPresupuestos}
             />
           )}
