@@ -12,7 +12,7 @@ import { NuevoPedidoPage } from './pages/pedidos/NuevoPedidoPage';
 import { PedidoDetallePage } from './pages/pedidos/PedidoDetallePage';
 import { PresupuestosPage } from './pages/presupuestos/PresupuestosPage';
 import {
-  TesoreriaPage, HistorialPage, AdminConfigPage, AdminPedidosPage, FacturasPage,
+  TesoreriaPage, HistorialPage, AdminConfigPage, AdminPedidosPage,
 } from './pages/admin/AdminPages';
 import { AdminUsuariosPage } from './pages/admin/AdminUsuariosPage';
 import { ProveedoresListPage } from './pages/proveedores/ProveedoresListPage';
@@ -59,9 +59,7 @@ function AppInner() {
       <Route path="/pagos" element={
         <Guard roles={['tesoreria', 'admin']}><TesoreriaPage /></Guard>
       } />
-      <Route path="/facturas" element={
-        <Guard roles={['tesoreria', 'admin']}><FacturasPage /></Guard>
-      } />
+      <Route path="/facturas" element={<Navigate to="/pagos" replace />} />
       <Route path="/finanzas" element={
         <Guard roles={['tesoreria', 'admin']}><FinanzasPage /></Guard>
       } />

@@ -1,7 +1,8 @@
-import { useEffect, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import type { Presupuesto, User } from '../../types';
 import { formatMoney, formatDate } from '../../lib/utils';
 import { X, FileText, Calendar, Building2, Banknote, Clock, Mail, Trash2 } from 'lucide-react';
+import { OcViewerModal } from '../ui/OcViewerModal';
 
 function nombreCargadoPor(u?: User) {
   if (!u) return '—';
@@ -34,6 +35,9 @@ export function PresupuestoDetalleModal({
   isSeleccionado,
   isMenorValor,
 }: PresupuestoDetalleModalProps) {
+  const [showPdfViewer, setShowPdfViewer] = useState(false);
+  const pdfUrl = p.archivoFirmadoUrl || p.archivoUrl;
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -143,10 +147,14 @@ export function PresupuestoDetalleModal({
 
           <div className="mt-4 rounded-xl p-4" style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}>
             <div className="text-[10px] font-bold uppercase tracking-wide text-slate-400 mb-2">Documento</div>
-            {p.archivoUrl ? (
-              <a href={p.archivoUrl} target="_blank" rel="noreferrer" className="doc-link inline-flex items-center gap-2 font-semibold">
-                <FileText size={16} /> Abrir PDF del presupuesto
-              </a>
+            {pdfUrl ? (
+              <button
+                type="button"
+                onClick={() => setShowPdfViewer(true)}
+                className="doc-link inline-flex items-center gap-2 font-semibold"
+              >
+                <FileText size={16} /> {p.archivoFirmadoUrl ? 'Abrir PDF firmado' : 'Abrir PDF del presupuesto'}
+              </button>
             ) : (
               <p className="text-sm text-slate-500 m-0">No hay PDF adjunto para esta cotización.</p>
             )}
@@ -172,6 +180,16 @@ export function PresupuestoDetalleModal({
           )}
         </div>
       </div>
+
+      {showPdfViewer && pdfUrl && (
+        <OcViewerModal
+          url={pdfUrl}
+          numero={`Presupuesto #${index}`}
+          pedidoNumero={pedidoNumero}
+          title="Presupuesto"
+          onClose={() => setShowPdfViewer(false)}
+        />
+      )}
     </div>
   );
 }

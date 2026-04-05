@@ -5,9 +5,10 @@ import { formatMoney, formatDate, stageLabel, stageBadgeClass, stageIcon, pedido
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
 import { ActionModal } from '../../components/ui/ActionModal';
+import { OcViewerModal } from '../../components/ui/OcViewerModal';
 import { ButtonSpinner, RadaTillyLoader } from '../../components/ui/loading';
 import { Pagination, usePagination } from '../../components/ui/Pagination';
-import type { Pedido } from '../../types';
+import type { Pedido, Pago } from '../../types';
 import { PedidoStage } from '../../types';
 
 // ── ADMIN CONFIG ─────────────────────────────────────────────────────
@@ -218,66 +219,239 @@ export function HistorialPage() {
 }
 
 // ── TESORERÍA ─────────────────────────────────────────────────────────
+// ── TESORERÍA HELPERS ────────────────────────────────────────────────
+
+type UrgenciaTipo = 'vencida' | 'urgente' | 'proxima' | 'normal' | 'sin-fecha';
+
+function getUrgencia(fechaLimitePago?: string): UrgenciaTipo {
+  if (!fechaLimitePago) return 'sin-fecha';
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const manana = new Date(hoy);
+  manana.setDate(manana.getDate() + 1);
+  const enSieteDias = new Date(hoy);
+  enSieteDias.setDate(enSieteDias.getDate() + 7);
+  const fecha = new Date(fechaLimitePago);
+  fecha.setHours(0, 0, 0, 0);
+  if (fecha < hoy) return 'vencida';
+  if (fecha <= manana) return 'urgente';
+  if (fecha <= enSieteDias) return 'proxima';
+  return 'normal';
+}
+
+const URGENCIA_ORDER: Record<UrgenciaTipo, number> = {
+  vencida: 0, urgente: 1, proxima: 2, normal: 3, 'sin-fecha': 4,
+};
+
+function UrgenciaBadge({ urgencia, fecha }: { urgencia: UrgenciaTipo; fecha?: string }) {
+  if (urgencia === 'sin-fecha') return null;
+  const label = fecha ? formatDate(fecha) : '';
+  const styles: Record<Exclude<UrgenciaTipo, 'sin-fecha'>, string> = {
+    vencida: 'bg-red-100 text-red-700',
+    urgente: 'bg-amber-100 text-amber-700',
+    proxima: 'bg-yellow-100 text-yellow-700',
+    normal:  'bg-blue-100 text-blue-600',
+  };
+  const icons: Record<Exclude<UrgenciaTipo, 'sin-fecha'>, string> = {
+    vencida: '⚠️',
+    urgente: '🔴',
+    proxima: '🟡',
+    normal:  '📅',
+  };
+  return (
+    <span className={`inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full ${styles[urgencia as Exclude<UrgenciaTipo, 'sin-fecha'>]}`}>
+      {icons[urgencia as Exclude<UrgenciaTipo, 'sin-fecha'>]}
+      {urgencia === 'vencida' ? `Vencida el ${label}` : `Vence ${label}`}
+    </span>
+  );
+}
+
+function cardBorderClass(p: Pedido): string {
+  if (p.bloqueado) return 'border-l-red-500 bg-red-50/30';
+  const urg = getUrgencia(p.fechaLimitePago);
+  if (urg === 'vencida') return 'border-l-red-500';
+  if (urg === 'urgente') return 'border-l-amber-400';
+  if (urg === 'proxima') return 'border-l-yellow-400';
+  return 'border-l-blue-500';
+}
+
+// ── TESORERÍA PAGE ────────────────────────────────────────────────────
+
 export function TesoreriaPage() {
   const qc = useQueryClient();
   const { user } = useAuthStore();
-  const { data: pedidos = [] } = useQuery({
+  const { data: pedidos = [], isLoading: pedidosLoading } = useQuery({
     queryKey: ['pedidos', user?.rol],
     queryFn: () => pedidosApi.getAll(),
   });
+  const { data: pagos = [], isLoading: pagosLoading } = useQuery({
+    queryKey: ['pagos'],
+    queryFn: () => pagosApi.getAll(),
+  });
   const [modal, setModal] = useState<{ pedido: Pedido; action: string } | null>(null);
+  const [historialOpen, setHistorialOpen] = useState(false);
+  const [facturaViewer, setFacturaViewer] = useState<{ url: string; numero: string; pedidoNumero: string } | null>(null);
 
   const pendientes = pedidos.filter(p => p.stage === PedidoStage.GESTION_PAGOS);
   const bloqueados = pendientes.filter(p => p.bloqueado);
-  const libres = pendientes.filter(p => !p.bloqueado);
+  const vencidas = pendientes.filter(p => getUrgencia(p.fechaLimitePago) === 'vencida');
+  const urgentes = pendientes.filter(p => getUrgencia(p.fechaLimitePago) === 'urgente');
+
+  const pendientesOrdenados = [...pendientes].sort((a, b) => {
+    const diff = URGENCIA_ORDER[getUrgencia(a.fechaLimitePago)] - URGENCIA_ORDER[getUrgencia(b.fechaLimitePago)];
+    if (diff !== 0) return diff;
+    if (a.fechaLimitePago && b.fechaLimitePago) {
+      return new Date(a.fechaLimitePago).getTime() - new Date(b.fechaLimitePago).getTime();
+    }
+    return 0;
+  });
 
   return (
     <div className="page-shell space-y-6">
       <div className="page-heading">
         <div className="page-kicker">Tesorería</div>
-        <h1 className="page-title">Pagos y sellados</h1>
+        <h1 className="page-title">Gestión de pagos</h1>
+        <p className="page-subtitle">Sellados y pagos pendientes, con seguimiento de vencimientos de factura.</p>
       </div>
 
-      <div className="grid grid-cols-3 gap-4">
-        <div className="stat-card text-center"><div className="stat-number text-red-600">{bloqueados.length}</div><div className="stat-label">Bloqueados</div></div>
-        <div className="stat-card text-center"><div className="stat-number text-blue-600">{libres.length}</div><div className="stat-label">Listos para pagar</div></div>
-        <div className="stat-card text-center"><div className="stat-number text-green-600">{pedidos.filter(p => p.stage >= 5).length}</div><div className="stat-label">Procesados</div></div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="stat-card text-center">
+          <div className={`stat-number ${vencidas.length > 0 ? 'text-red-600' : 'text-slate-400'}`}>{vencidas.length}</div>
+          <div className="stat-label">Vencidas</div>
+        </div>
+        <div className="stat-card text-center">
+          <div className={`stat-number ${urgentes.length > 0 ? 'text-amber-500' : 'text-slate-400'}`}>{urgentes.length}</div>
+          <div className="stat-label">Hoy / mañana</div>
+        </div>
+        <div className="stat-card text-center">
+          <div className={`stat-number ${bloqueados.length > 0 ? 'text-orange-500' : 'text-slate-400'}`}>{bloqueados.length}</div>
+          <div className="stat-label">Con sellado pendiente</div>
+        </div>
+        <div className="stat-card text-center">
+          <div className="stat-number text-blue-600">{pendientes.length}</div>
+          <div className="stat-label">Total pendientes</div>
+        </div>
       </div>
 
+      {vencidas.length > 0 && (
+        <div className="alert alert-danger">
+          ⚠️ {vencidas.length} factura{vencidas.length !== 1 ? 's' : ''} vencida{vencidas.length !== 1 ? 's' : ''} — requieren pago inmediato.
+        </div>
+      )}
       {bloqueados.length > 0 && (
         <div className="alert alert-danger">
           🔒 {bloqueados.length} pedido{bloqueados.length !== 1 ? 's' : ''} bloqueado{bloqueados.length !== 1 ? 's' : ''} — registrá el sellado provincial para habilitar el pago.
         </div>
       )}
 
-      <div className="space-y-4">
-        {pendientes.map(p => (
-          <div key={p.id} className={`card p-5 border-l-4 ${p.bloqueado ? 'border-l-red-500 bg-red-50/30' : 'border-l-blue-500'}`}>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="font-mono text-xs text-slate-400">{p.numero}</div>
-                <div className="font-bold text-slate-800 mt-0.5">{p.descripcion}</div>
-                <div className="text-sm text-slate-500">📍 {p.area} · {p.proveedorSeleccionado}</div>
+      {pedidosLoading ? (
+        <RadaTillyLoader variant="contained" label="Cargando pedidos" />
+      ) : (
+        <div className="space-y-4">
+          {pendientesOrdenados.map(p => {
+            const urg = getUrgencia(p.fechaLimitePago);
+            return (
+              <div key={p.id} className={`card p-5 border-l-4 ${cardBorderClass(p)}`}>
+                <div className="flex items-start justify-between gap-4">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-xs text-slate-400">{p.numero}</span>
+                      {p.fechaLimitePago && <UrgenciaBadge urgencia={urg} fecha={p.fechaLimitePago} />}
+                      {p.bloqueado && (
+                        <span className="inline-flex items-center gap-1 text-xs font-semibold px-2 py-0.5 rounded-full bg-red-100 text-red-700">
+                          🔒 Req. sellado
+                        </span>
+                      )}
+                    </div>
+                    <div className="font-bold text-slate-800 mt-1">{p.descripcion}</div>
+                    <div className="text-sm text-slate-500 mt-0.5">
+                      📍 {p.area}{p.proveedorSeleccionado ? ` · ${p.proveedorSeleccionado}` : ''}
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div className="font-black font-mono text-xl">{formatMoney(p.monto)}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 mt-4 flex-wrap">
+                  {p.facturaComprasUrl && (
+                    <button
+                      type="button"
+                      onClick={() => setFacturaViewer({ url: p.facturaComprasUrl!, numero: 'Factura proveedor', pedidoNumero: p.numero })}
+                      className="doc-link text-sm"
+                    >
+                      🧾 Ver factura proveedor
+                    </button>
+                  )}
+                  {p.bloqueado ? (
+                    <button onClick={() => setModal({ pedido: p, action: 'sellado' })} className="btn btn-danger btn-sm gap-1">
+                      🏛️ Registrar sellado
+                    </button>
+                  ) : (
+                    <button onClick={() => setModal({ pedido: p, action: 'pago' })} className="btn btn-success btn-sm gap-1">
+                      💳 Registrar pago
+                    </button>
+                  )}
+                </div>
               </div>
-              <div className="text-right flex-shrink-0">
-                <div className="font-black font-mono text-xl">{formatMoney(p.monto)}</div>
-                {p.bloqueado && <div className="text-xs font-bold text-amber-600 mt-0.5">⚠️ Req. sellado</div>}
-              </div>
+            );
+          })}
+          {pendientes.length === 0 && (
+            <div className="card p-12 text-center text-slate-400">
+              <div className="empty-icon">✅</div>
+              <div className="empty-title">Sin pedidos pendientes de pago</div>
             </div>
-            <div className="flex gap-2 mt-4">
-              {p.bloqueado ? (
-                <button onClick={() => setModal({ pedido: p, action: 'sellado' })} className="btn btn-danger btn-sm gap-1">🏛️ Registrar sellado</button>
-              ) : (
-                <button onClick={() => setModal({ pedido: p, action: 'pago' })} className="btn btn-success btn-sm gap-1">💳 Registrar pago</button>
-              )}
+          )}
+        </div>
+      )}
+
+      {/* Historial de pagos registrados */}
+      <div className="card overflow-hidden">
+        <button
+          className="w-full flex items-center justify-between px-5 py-4 text-left font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+          onClick={() => setHistorialOpen(v => !v)}
+        >
+          <span>📋 Historial de pagos registrados</span>
+          <span className="text-slate-400 text-sm font-normal">
+            {historialOpen ? '▲ Ocultar' : `▼ Ver ${pagos.length} pago${pagos.length !== 1 ? 's' : ''}`}
+          </span>
+        </button>
+        {historialOpen && (
+          pagosLoading ? (
+            <div className="px-5 py-4">
+              <RadaTillyLoader variant="contained" label="Cargando historial" />
             </div>
-          </div>
-        ))}
-        {pendientes.length === 0 && (
-          <div className="card p-12 text-center text-slate-400">
-            <div className="empty-icon">✅</div>
-            <div className="empty-title">Sin pedidos pendientes de pago</div>
-          </div>
+          ) : pagos.length === 0 ? (
+            <div className="px-5 py-6 text-center text-slate-400 text-sm">
+              Aún no hay pagos registrados.
+            </div>
+          ) : (
+            <table className="w-full text-sm">
+              <thead>
+                <tr>
+                  {['Pedido', 'Transferencia', 'Fecha pago', 'Monto', 'Comprobante'].map(h => (
+                    <th key={h}>{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {(pagos as Pago[]).map(pago => (
+                  <tr key={pago.id}>
+                    <td className="font-mono text-xs text-slate-400">{pago.pedidoId}</td>
+                    <td className="font-semibold">{pago.numeroTransferencia}</td>
+                    <td className="text-slate-500">{formatDate(pago.fechaPago)}</td>
+                    <td className="font-mono">{formatMoney(pago.montoPagado)}</td>
+                    <td>
+                      {pago.facturaUrl ? (
+                        <a href={pago.facturaUrl} target="_blank" rel="noreferrer" className="doc-link">📄 Ver comprobante</a>
+                      ) : (
+                        <span className="badge badge-amber">Sin adjunto</span>
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
         )}
       </div>
 
@@ -289,58 +463,14 @@ export function TesoreriaPage() {
           onSuccess={() => { setModal(null); qc.invalidateQueries({ queryKey: ['pedidos'] }); }}
         />
       )}
-    </div>
-  );
-}
 
-export function FacturasPage() {
-  const { data: pagos = [], isLoading } = useQuery({ queryKey: ['pagos'], queryFn: () => pagosApi.getAll() });
-
-  return (
-    <div className="page-shell space-y-6">
-      <div className="page-heading">
-        <div className="page-kicker">Tesorería</div>
-        <h1 className="page-title">Facturas por vencer</h1>
-        <p className="page-subtitle">Seguimiento de comprobantes y facturas vinculadas a pagos registrados.</p>
-      </div>
-
-      {isLoading ? (
-        <RadaTillyLoader variant="contained" label="Cargando facturas" />
-      ) : pagos.length === 0 ? (
-        <div className="card empty-state">
-          <div className="empty-icon">🧾</div>
-          <div className="empty-title">Sin facturas registradas</div>
-          <div className="empty-copy">Aparecerán acá a medida que Tesorería cargue pagos con factura.</div>
-        </div>
-      ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr>
-                {['Pedido', 'Transferencia', 'Fecha', 'Monto', 'Factura'].map((h) => (
-                  <th key={h}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {pagos.map((pago) => (
-                <tr key={pago.id}>
-                  <td className="font-mono text-xs text-slate-400">{pago.pedidoId}</td>
-                  <td className="font-semibold">{pago.numeroTransferencia}</td>
-                  <td className="text-slate-500">{formatDate(pago.fechaPago)}</td>
-                  <td className="font-mono">{formatMoney(pago.montoPagado)}</td>
-                  <td>
-                    {pago.facturaUrl ? (
-                      <a href={pago.facturaUrl} target="_blank" rel="noreferrer" className="doc-link">📄 Ver factura</a>
-                    ) : (
-                      <span className="badge badge-amber">Pendiente</span>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      {facturaViewer && (
+        <OcViewerModal
+          url={facturaViewer.url}
+          numero={facturaViewer.numero}
+          pedidoNumero={facturaViewer.pedidoNumero}
+          onClose={() => setFacturaViewer(null)}
+        />
       )}
     </div>
   );

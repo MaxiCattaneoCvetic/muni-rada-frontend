@@ -9,6 +9,7 @@ import { ButtonSpinner, RadaTillyLoader } from '../ui/loading';
 import { PresupuestoCargaModal } from './PresupuestoCargaModal';
 import { PresupuestoDetalleModal } from './PresupuestoDetalleModal';
 import { StepSuccessModal } from '../ui/StepSuccessModal';
+import { OcViewerModal } from '../ui/OcViewerModal';
 import { Trash2, Plus, Send } from 'lucide-react';
 
 function formatApiError(e: unknown): string {
@@ -62,6 +63,7 @@ export function PedidoPresupuestosComprasPanel({
   const [showCargaModal, setShowCargaModal] = useState(false);
   const [error, setError] = useState('');
   const [detalle, setDetalle] = useState<Presupuesto | null>(null);
+  const [pdfPresupuesto, setPdfPresupuesto] = useState<Presupuesto | null>(null);
   const [showSuccess, setShowSuccess] = useState(false);
 
   const delMut = useMutation({
@@ -225,16 +227,17 @@ export function PedidoPresupuestosComprasPanel({
               </div>
             )}
             <div className="mt-3 flex items-center justify-between gap-2">
-              {p.archivoUrl ? (
-                <a
-                  href={p.archivoUrl}
-                  target="_blank"
-                  rel="noreferrer"
+              {(p.archivoFirmadoUrl || p.archivoUrl) ? (
+                <button
+                  type="button"
                   className="doc-link"
-                  onClick={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setPdfPresupuesto(p);
+                  }}
                 >
-                  📄 Ver PDF
-                </a>
+                  📄 {p.archivoFirmadoUrl ? 'Ver PDF firmado' : 'Ver PDF'}
+                </button>
               ) : (
                 <span className="text-xs text-slate-400">Sin PDF adjunto</span>
               )}
@@ -262,6 +265,16 @@ export function PedidoPresupuestosComprasPanel({
           onClose={() => setDetalle(null)}
           onDelete={() => delMut.mutate(detalle.id)}
           deletePending={delMut.isPending}
+        />
+      )}
+
+      {(pdfPresupuesto?.archivoFirmadoUrl || pdfPresupuesto?.archivoUrl) && (
+        <OcViewerModal
+          url={pdfPresupuesto.archivoFirmadoUrl || pdfPresupuesto.archivoUrl!}
+          numero={`Presupuesto #${presupuestos.findIndex((x) => x.id === pdfPresupuesto.id) + 1}`}
+          pedidoNumero={pedido.numero}
+          title="Presupuesto"
+          onClose={() => setPdfPresupuesto(null)}
         />
       )}
 

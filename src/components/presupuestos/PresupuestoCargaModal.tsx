@@ -14,6 +14,15 @@ function formatApiError(e: unknown): string {
   return any.message || 'Error';
 }
 
+function sanitizeMontoInput(value: string): string {
+  return value.replace(/\D/g, '');
+}
+
+function formatMontoInput(value: string): string {
+  if (!value) return '';
+  return new Intl.NumberFormat('es-AR', { maximumFractionDigits: 0 }).format(Number(value));
+}
+
 export interface PresupuestoCargaModalProps {
   open: boolean;
   onClose: () => void;
@@ -92,6 +101,7 @@ export function PresupuestoCargaModal({
     let nombreProveedor = '';
     let cuitPresupuesto = form.cuit.trim() || undefined;
     let contactoFallback = '';
+    const montoNormalizado = Number(sanitizeMontoInput(form.monto));
 
     if (!proveedorSelect) {
       setError('Elegí un proveedor del listado o la opción para crear uno nuevo.');
@@ -100,6 +110,11 @@ export function PresupuestoCargaModal({
 
     if (!form.monto?.toString().trim()) {
       setError('Completá el monto cotizado.');
+      return;
+    }
+
+    if (Number.isNaN(montoNormalizado)) {
+      setError('Ingresá un monto válido.');
       return;
     }
 
@@ -139,7 +154,7 @@ export function PresupuestoCargaModal({
     const contactoFin = form.contacto.trim() || contactoFallback || undefined;
     const dto = {
       proveedor: nombreProveedor,
-      monto: form.monto,
+      monto: montoNormalizado,
       plazoEntrega: form.plazoEntrega.trim() || undefined,
       contacto: contactoFin,
       cuit: cuitPresupuesto,
@@ -164,7 +179,6 @@ export function PresupuestoCargaModal({
     <div
       className="fixed inset-0 z-[300] flex items-center justify-center p-4 sm:p-5 backdrop-blur-sm"
       style={{ background: 'rgba(15,23,42,.55)' }}
-      onClick={(e) => e.target === e.currentTarget && !saving && onClose()}
       role="presentation"
     >
       <div
@@ -287,10 +301,11 @@ export function PresupuestoCargaModal({
           <div>
             <label className="label">Monto ($) *</label>
             <input
-              type="number"
+              type="text"
+              inputMode="numeric"
               className="input"
-              value={form.monto}
-              onChange={(e) => setForm((f) => ({ ...f, monto: e.target.value }))}
+              value={formatMontoInput(form.monto)}
+              onChange={(e) => setForm((f) => ({ ...f, monto: sanitizeMontoInput(e.target.value) }))}
               placeholder="0"
             />
           </div>

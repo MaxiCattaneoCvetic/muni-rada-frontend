@@ -9,13 +9,16 @@ function resolveBaseURL(): string {
 
 const api = axios.create({
   baseURL: resolveBaseURL(),
-  headers: { 'Content-Type': 'application/json' },
 });
 
 // Attach JWT token to every request
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('accessToken');
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  // Let the browser set the multipart boundary for FormData uploads.
+  if (config.data instanceof FormData && config.headers) {
+    delete config.headers['Content-Type'];
+  }
   return config;
 });
 

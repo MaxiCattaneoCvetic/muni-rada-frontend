@@ -133,12 +133,15 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
   const [facturaFile, setFacturaFile] = useState<File | null>(null);
   const [facturaComprasFile, setFacturaComprasFile] = useState<File | null>(null);
   const [fechaLimitePago, setFechaLimitePago] = useState('');
+  const [modoFirma, setModoFirma] = useState<'digital' | 'escaneado'>('digital');
+  const [presupuestoFirmadoFile, setPresupuestoFirmadoFile] = useState<File | null>(null);
   const [error, setError] = useState('');
   const [rechazoAck, setRechazoAck] = useState(false);
   const [showSuccess, setShowSuccess] = useState(false);
   const [ocData, setOcData] = useState<{ numero?: string; url?: string } | null>(null);
   const [ocTimeout, setOcTimeout] = useState(false);
   const [showOcViewer, setShowOcViewer] = useState(false);
+  const [presupuestoPdf, setPresupuestoPdf] = useState<{ url: string; numero: string } | null>(null);
   const ocPollTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ocPollAttempts = useRef(0);
 
@@ -146,6 +149,10 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
     if (action === 'rechazar') {
       setRechazoAck(false);
       setMotivo('');
+    }
+    if (action === 'firmar') {
+      setModoFirma('digital');
+      setPresupuestoFirmadoFile(null);
     }
   }, [action]);
 
@@ -195,9 +202,22 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
       if (!m) { setError('Ingresá el motivo del rechazo'); return; }
       mut.mutate(pedidosApi.rechazar(pedido.id, m) as any);
     } else if (action === 'firmar') {
-      if (!user?.firmaUrl) { setError('No tenés una firma configurada. Andá a Mi Perfil para subir tu firma.'); return; }
       if (!firmarPresupuesto?.id) { setError('Elegí un presupuesto en la pestaña Presupuestos antes de firmar.'); return; }
-      mut.mutate(pedidosApi.firmar(pedido.id, { presupuestoId: firmarPresupuesto.id, nota }) as any);
+      if (modoFirma === 'digital' && !user?.firmaUrl) {
+        setError('No tenés una firma configurada. Andá a Mi Perfil para subir tu firma.');
+        return;
+      }
+      if (modoFirma === 'escaneado' && !presupuestoFirmadoFile) {
+        setError('Adjuntá el presupuesto escaneado y firmado en PDF.');
+        return;
+      }
+      mut.mutate(
+        pedidosApi.firmar(
+          pedido.id,
+          { presupuestoId: firmarPresupuesto.id, nota, modoFirma },
+          presupuestoFirmadoFile || undefined,
+        ) as any,
+      );
     } else if (action === 'confirmar-recepcion') {
       mut.mutate(pedidosApi.confirmarRecepcion(pedido.id, nota) as any);
     } else if (action === 'sellado') {
@@ -310,6 +330,15 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
             numero={ocData.numero}
             pedidoNumero={pedido.numero}
             onClose={() => setShowOcViewer(false)}
+          />
+        )}
+        {presupuestoPdf && (
+          <OcViewerModal
+            url={presupuestoPdf.url}
+            numero={presupuestoPdf.numero}
+            pedidoNumero={pedido.numero}
+            title="Presupuesto"
+            onClose={() => setPresupuestoPdf(null)}
           />
         )}
       </>
@@ -517,6 +546,7 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
             const montoCot = Number(firmarPresupuesto.monto);
             const requiereSelladoProvincial = montoCot >= umbral;
             const p = firmarPresupuesto;
+            const presupuestoPdfUrl = p.archivoFirmadoUrl || p.archivoUrl;
             return (
               <div className="space-y-4">
                 <div
@@ -617,16 +647,15 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
                         <ConfirmDetailRow label="Notas de la cotización" value={<span className="whitespace-pre-wrap font-normal">{p.notas}</span>} />
                       )}
                     </div>
-                    {p.archivoUrl ? (
-                      <a
-                        href={p.archivoUrl}
-                        target="_blank"
-                        rel="noreferrer"
+                    {presupuestoPdfUrl ? (
+                      <button
+                        type="button"
+                        onClick={() => setPresupuestoPdf({ url: presupuestoPdfUrl, numero: 'Presupuesto seleccionado' })}
                         className="mt-3 inline-flex items-center gap-2 text-sm font-bold text-emerald-800 hover:text-emerald-950 hover:underline"
                       >
                         <ExternalLink size={16} />
-                        Abrir PDF del presupuesto en nueva pestaña
-                      </a>
+                        {p.archivoFirmadoUrl ? 'Ver PDF firmado' : 'Ver PDF del presupuesto'}
+                      </button>
                     ) : (
                       <p className="mt-3 text-xs font-semibold text-amber-800">Esta cotización no tiene PDF adjunto en el sistema.</p>
                     )}
@@ -653,24 +682,76 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
                 <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                   <div className="mb-3 flex items-center gap-2 text-xs font-extrabold uppercase tracking-wide text-slate-500">
                     <User size={14} className="text-slate-400" />
-                    Firma digital · {nombreMostrado(user ?? undefined)}
+                    Modalidad de firma · {nombreMostrado(user ?? undefined)}
                   </div>
-                  {user?.firmaUrl ? (
-                    <div className="flex flex-col items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50/50 p-4">
-                      <p className="text-center text-xs font-semibold text-emerald-900">Vista previa de la firma que quedará registrada</p>
-                      <img
-                        src={user.firmaUrl}
-                        alt="Tu firma"
-                        className="max-h-28 w-full max-w-xs object-contain bg-white p-3 rounded-lg"
-                        style={{ border: '1px solid var(--green-brd)' }}
-                      />
+                  <div className="grid gap-3 md:grid-cols-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModoFirma('digital');
+                        setPresupuestoFirmadoFile(null);
+                        setError('');
+                      }}
+                      className={`rounded-xl border p-4 text-left transition-all ${modoFirma === 'digital' ? 'border-emerald-400 bg-emerald-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                    >
+                      <div className="text-sm font-extrabold text-slate-900">Firmar presupuesto con firma cargada en el sistema</div>
+                      <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                        Se usará la firma escaneada que ya tenés asociada a tu perfil para autorizar la compra.
+                      </p>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setModoFirma('escaneado');
+                        setError('');
+                      }}
+                      className={`rounded-xl border p-4 text-left transition-all ${modoFirma === 'escaneado' ? 'border-blue-400 bg-blue-50 shadow-sm' : 'border-slate-200 bg-white hover:border-slate-300'}`}
+                    >
+                      <div className="text-sm font-extrabold text-slate-900">Subir presupuesto escaneado y firmado</div>
+                      <p className="mt-1 text-xs leading-relaxed text-slate-600">
+                        Adjuntá el PDF ya firmado para dejarlo asociado al expediente como respaldo documental.
+                      </p>
+                    </button>
+                  </div>
+
+                  {modoFirma === 'digital' ? (
+                    <div className="mt-4">
+                      {user?.firmaUrl ? (
+                        <div className="flex flex-col items-center gap-3 rounded-lg border border-emerald-200 bg-emerald-50/50 p-4">
+                          <p className="text-center text-xs font-semibold text-emerald-900">Vista previa de la firma que quedará registrada</p>
+                          <img
+                            src={user.firmaUrl}
+                            alt="Tu firma"
+                            className="max-h-28 w-full max-w-xs object-contain bg-white p-3 rounded-lg"
+                            style={{ border: '1px solid var(--green-brd)' }}
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+                          <AlertTriangle className="h-5 w-5 shrink-0" />
+                          <p className="font-semibold leading-snug">
+                            No tenés firma en tu perfil. Subila en <strong>Mi Perfil</strong> antes de poder confirmar.
+                          </p>
+                        </div>
+                      )}
                     </div>
                   ) : (
-                    <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-900">
-                      <AlertTriangle className="h-5 w-5 shrink-0" />
-                      <p className="font-semibold leading-snug">
-                        No tenés firma en tu perfil. Subila en <strong>Mi Perfil</strong> antes de poder confirmar.
+                    <div className="mt-4 rounded-lg border border-blue-200 bg-blue-50/60 p-4">
+                      <label className="label">Presupuesto escaneado y firmado (PDF)</label>
+                      <input
+                        type="file"
+                        accept=".pdf,application/pdf"
+                        className="input py-2 text-sm"
+                        onChange={(e) => setPresupuestoFirmadoFile(e.target.files?.[0] ?? null)}
+                      />
+                      <p className="mt-2 text-xs text-slate-600">
+                        Se conservará la cotización original y este archivo quedará guardado como versión firmada.
                       </p>
+                      {presupuestoFirmadoFile && (
+                        <p className="mt-2 text-xs font-semibold text-blue-900">
+                          Archivo seleccionado: {presupuestoFirmadoFile.name}
+                        </p>
+                      )}
                     </div>
                   )}
                 </div>
@@ -890,7 +971,11 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
             onClick={submit}
             disabled={
               mut.isPending
-              || (action === 'firmar' && (!user?.firmaUrl || !firmarPresupuesto?.id))
+              || (action === 'firmar' && (
+                !firmarPresupuesto?.id
+                || (modoFirma === 'digital' && !user?.firmaUrl)
+                || (modoFirma === 'escaneado' && !presupuestoFirmadoFile)
+              ))
               || (action === 'rechazar' && (!motivo.trim() || !rechazoAck))
             }
             className={`btn ${action.includes('rechazar') ? 'btn-danger' : action === 'firmar' || action === 'confirmar-recepcion' || action === 'subir-factura' ? 'btn-success' : 'btn-primary'}`}

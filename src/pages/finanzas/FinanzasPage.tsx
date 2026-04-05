@@ -17,15 +17,21 @@ import { formatDate, formatMoney } from '../../lib/utils';
 import { ButtonSpinner } from '../../components/ui/loading';
 
 const AREA_COLORS: Record<AreaMunicipal, string> = {
-  'Administración': '#1d4ed8',
-  'Catastro': '#7c3aed',
-  'Intendencia': '#f59e0b',
-  'RRHH': '#0f766e',
+  Automotores: '#2563eb',
+  Compras: '#7c3aed',
+  Cultura: '#c026d3',
+  Gobierno: '#4f46e5',
+  'Guardia Urbana': '#475569',
+  Hacienda: '#d97706',
+  'Licencia de Conducir': '#0891b2',
+  'Medio Ambiente': '#15803d',
   'Obras Públicas': '#0ea5e9',
-  'Sistemas': '#22c55e',
-  'Tesorería': '#14b8a6',
-  'Secretaría': '#3b82f6',
-  'Turismo': '#ec4899',
+  Rentas: '#65a30d',
+  RRHH: '#0f766e',
+  Secretaría: '#3b82f6',
+  Sistemas: '#22c55e',
+  Tesorería: '#14b8a6',
+  'Turismo y Deportes': '#ea580c',
 };
 
 function buildMonthKeys(year: number) {
@@ -488,7 +494,7 @@ export function FinanzasPage() {
                   <th>Fecha pago</th>
                   <th>Transferencia</th>
                   <th>Monto</th>
-                  <th>Factura</th>
+                  <th>Comprobante</th>
                 </tr>
               </thead>
               <tbody>
@@ -504,7 +510,7 @@ export function FinanzasPage() {
                     <td>
                       {item.facturaUrl ? (
                         <a href={item.facturaUrl} target="_blank" rel="noreferrer" className="doc-link">
-                          📄 Ver factura
+                          📄 Ver comprobante
                         </a>
                       ) : (
                         <span className="badge badge-amber">Sin adjunto</span>

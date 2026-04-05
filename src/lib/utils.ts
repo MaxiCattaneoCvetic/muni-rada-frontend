@@ -100,11 +100,11 @@ export const ROLE_STAGES: Record<string, number[]> = {
 };
 
 /** Stages visible to each role when "solo etapas de mi área" is active.
- *  Includes read-only downstream stages so every role can track overall progress. */
+ *  Includes action stages + downstream tracking stages for each role. */
 export const ROLE_VISIBLE_STAGES: Record<string, number[]> = {
-  secretaria: [1, 3, 6, 8],
-  compras: [2, 4, 6, 8],
-  tesoreria: [5, 6],
+  secretaria: [1, 2, 3, 4, 6, 8],
+  compras: [2, 3, 4, 6, 8],
+  tesoreria: [4, 5, 6, 8],
   admin: [1, 2, 3, 4, 5, 6, 7, 8],
 };
 

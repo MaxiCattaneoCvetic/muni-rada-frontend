@@ -56,7 +56,9 @@ export const pedidosApi = {
     if (dto.detalle != null && dto.detalle !== '') form.append('detalle', dto.detalle);
     form.append('urgente', dto.urgente ? 'true' : 'false');
     referencias?.forEach((file) => form.append('referencias', file));
-    return api.post<Pedido>('/pedidos', form).then((r) => r.data);
+    return api.post<Pedido>('/pedidos', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then((r) => r.data);
   },
   aprobar: (id: string, nota?: string) =>
     api.patch<Pedido>(`/pedidos/${id}/aprobar`, { nota }).then(r => r.data),
@@ -66,8 +68,20 @@ export const pedidosApi = {
     api.patch<Pedido>(`/pedidos/${id}/enviar-firma`).then(r => r.data),
   seleccionarPresupuesto: (id: string, presupuestoId: string) =>
     api.patch<Pedido>(`/pedidos/${id}/seleccionar-presupuesto/${presupuestoId}`).then(r => r.data),
-  firmar: (id: string, body: { presupuestoId: string; nota?: string }) =>
-    api.patch<Pedido>(`/pedidos/${id}/firmar`, body).then(r => r.data),
+  firmar: (
+    id: string,
+    body: { presupuestoId: string; nota?: string; modoFirma?: 'digital' | 'escaneado' },
+    presupuestoFirmado?: File,
+  ) => {
+    const form = new FormData();
+    form.append('presupuestoId', body.presupuestoId);
+    if (body.nota) form.append('nota', body.nota);
+    if (body.modoFirma) form.append('modoFirma', body.modoFirma);
+    if (presupuestoFirmado) form.append('presupuestoFirmado', presupuestoFirmado);
+    return api.patch<Pedido>(`/pedidos/${id}/firmar`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data);
+  },
   rechazarPresupuesto: (id: string, motivo: string) =>
     api.patch<Pedido>(`/pedidos/${id}/rechazar-presupuesto`, { motivo }).then(r => r.data),
   confirmarRecepcion: (id: string, nota?: string) =>
@@ -114,8 +128,9 @@ export const presupuestosApi = {
     const form = new FormData();
     Object.entries(dto).forEach(([k, v]) => { if (v != null && v !== '') form.append(k, String(v)); });
     if (archivo) form.append('archivo', archivo);
-    // No fijar Content-Type: el navegador debe enviar multipart con boundary (evita cuerpo vacío en el servidor).
-    return api.post<Presupuesto>(`/pedidos/${pedidoId}/presupuestos`, form).then(r => r.data);
+    return api.post<Presupuesto>(`/pedidos/${pedidoId}/presupuestos`, form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    }).then(r => r.data);
   },
   delete: (pedidoId: string, id: string) =>
     api.delete(`/pedidos/${pedidoId}/presupuestos/${id}`).then(r => r.data),

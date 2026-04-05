@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/auth.store';
-import { authApi, pagosApi, pedidosApi } from '../../api/services';
+import { authApi, pedidosApi } from '../../api/services';
 import { isDemoMode } from '../../lib/demo';
 import type { UserRole } from '../../types';
 import { PedidoStage } from '../../types';
@@ -17,7 +17,7 @@ import { SpeedDialFAB } from './SpeedDialFAB';
 
 const DEMO_ROLES = ['secretaria', 'compras', 'tesoreria', 'admin'] as const satisfies readonly UserRole[];
 
-const NAV_BY_ROLE: Record<string, { icon: string; label: string; to: string; badgeKey?: 'aprobar' | 'firmar' | 'presupuestos' | 'pagos' | 'facturas' }[]> = {
+const NAV_BY_ROLE: Record<string, { icon: string; label: string; to: string; badgeKey?: 'aprobar' | 'firmar' | 'presupuestos' | 'pagos' }[]> = {
   secretaria: [
     { icon: '🏠', label: 'Inicio', to: '/dashboard' },
     { icon: '✅', label: 'Aprobar pedidos', to: '/aprobar', badgeKey: 'aprobar' },
@@ -34,8 +34,7 @@ const NAV_BY_ROLE: Record<string, { icon: string; label: string; to: string; bad
   ],
   tesoreria: [
     { icon: '🏠', label: 'Inicio', to: '/dashboard' },
-    { icon: '💳', label: 'Pagos y sellados', to: '/pagos', badgeKey: 'pagos' },
-    { icon: '🧾', label: 'Facturas por vencer', to: '/facturas', badgeKey: 'facturas' },
+    { icon: '💳', label: 'Gestión de pagos', to: '/pagos', badgeKey: 'pagos' },
     { icon: '💸', label: 'Finanzas', to: '/finanzas' },
     { icon: '🎫', label: 'Mis reportes', to: '/mis-reportes' },
   ],
@@ -71,18 +70,24 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
     queryFn: () => pedidosApi.getAll(),
     refetchInterval: 30000,
   });
-  const { data: pagos = [] } = useQuery({
-    queryKey: ['pagos', 'sidebar'],
-    queryFn: () => pagosApi.getAll(),
-    refetchInterval: 30000,
-    enabled: user?.rol === 'tesoreria' || user?.rol === 'admin',
-  });
+
+  const hoy = new Date();
+  hoy.setHours(0, 0, 0, 0);
+  const enTresDias = new Date(hoy);
+  enTresDias.setDate(enTresDias.getDate() + 3);
+
   const navBadgeCount = {
     aprobar: pedidos.filter((p) => p.stage === PedidoStage.APROBACION).length,
     firmar: pedidos.filter((p) => p.stage === PedidoStage.FIRMA).length,
     presupuestos: pedidos.filter((p) => p.stage === PedidoStage.PRESUPUESTOS || p.stage === PedidoStage.CARGA_FACTURA).length,
-    pagos: pedidos.filter((p) => p.stage === PedidoStage.GESTION_PAGOS).length,
-    facturas: pagos.length,
+    // Show count of stage-5 pedidos that are urgent (no date, overdue, or due within 3 days)
+    pagos: pedidos.filter((p) => {
+      if (p.stage !== PedidoStage.GESTION_PAGOS) return false;
+      if (!p.fechaLimitePago) return true;
+      const fecha = new Date(p.fechaLimitePago);
+      fecha.setHours(0, 0, 0, 0);
+      return fecha <= enTresDias;
+    }).length,
   };
 
   const handleLogout = () => {

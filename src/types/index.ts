@@ -2,12 +2,26 @@
 export type UserRole = 'secretaria' | 'compras' | 'tesoreria' | 'admin';
 
 export type AreaMunicipal =
-  | 'Administración' | 'Obras Públicas' | 'Sistemas' | 'RRHH'
-  | 'Catastro' | 'Intendencia' | 'Turismo' | 'Tesorería' | 'Secretaría';
+  | 'Automotores' | 'Compras' | 'Cultura' | 'Gobierno' | 'Guardia Urbana' | 'Hacienda'
+  | 'Licencia de Conducir' | 'Medio Ambiente' | 'Obras Públicas' | 'Rentas' | 'RRHH'
+  | 'Secretaría' | 'Sistemas' | 'Tesorería' | 'Turismo y Deportes';
 
 export const AREAS: AreaMunicipal[] = [
-  'Administración', 'Catastro', 'Intendencia', 'RRHH',
-  'Obras Públicas', 'Sistemas', 'Tesorería', 'Secretaría', 'Turismo',
+  'Automotores',
+  'Compras',
+  'Cultura',
+  'Gobierno',
+  'Guardia Urbana',
+  'Hacienda',
+  'Licencia de Conducir',
+  'Medio Ambiente',
+  'Obras Públicas',
+  'Rentas',
+  'RRHH',
+  'Secretaría',
+  'Sistemas',
+  'Tesorería',
+  'Turismo y Deportes',
 ];
 
 export interface AuthUser {
@@ -266,6 +280,7 @@ export interface Presupuesto {
   contacto?: string;
   notas?: string;
   archivoUrl?: string;
+  archivoFirmadoUrl?: string;
   cargadoPor?: User;
   createdAt: string;
 }

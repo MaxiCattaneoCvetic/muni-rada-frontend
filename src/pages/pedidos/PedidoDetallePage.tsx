@@ -11,7 +11,7 @@ import { OcViewerModal } from '../../components/ui/OcViewerModal';
 import { PresupuestoDetalleModal } from '../../components/presupuestos/PresupuestoDetalleModal';
 import { PedidoPresupuestosComprasPanel } from '../../components/presupuestos/PedidoPresupuestosComprasPanel';
 import { ButtonSpinner, RadaTillyLoader } from '../../components/ui/loading';
-import { ArrowLeft, Clock, CheckCircle, Lock, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Clock, CheckCircle, Lock, AlertTriangle, RotateCcw } from 'lucide-react';
 import type { Presupuesto } from '../../types';
 import { PedidoStage, STAGE_OWNER_LABELS } from '../../types';
 
@@ -38,6 +38,7 @@ export function PedidoDetallePage() {
   const [chatInput, setChatInput] = useState('');
   const [presupuestoParaFirmaId, setPresupuestoParaFirmaId] = useState<string | null>(null);
   const [showOcViewer, setShowOcViewer] = useState(false);
+  const [docViewer, setDocViewer] = useState<{ url: string; title: string } | null>(null);
   const prevPedidoIdRef = useRef<string | undefined>(undefined);
   const location = useLocation();
 
@@ -122,6 +123,7 @@ export function PedidoDetallePage() {
 
   const presupuestoCountLabel = `${presupuestos.length} presupuesto${presupuestos.length !== 1 ? 's' : ''} cargado${presupuestos.length !== 1 ? 's' : ''}`;
   const isRejected = pedido.stage === PedidoStage.RECHAZADO;
+  const canRepeatPedido = pedido.stage === PedidoStage.SUMINISTROS_LISTOS;
   const currentAreaLabel = user?.rol ? rolLabel(user.rol) : 'Sin área';
 
   const currentStepMessageContext = {
@@ -594,6 +596,16 @@ export function PedidoDetallePage() {
               📋 Ver orden de compra
             </button>
           )}
+          {canRepeatPedido && (
+            <button
+              type="button"
+              onClick={() => navigate(`/nuevo-pedido?from=${pedido.id}`)}
+              className="btn btn-ghost btn-sm gap-1.5"
+              title="Crear un nuevo pedido basado en este"
+            >
+              <RotateCcw size={14} /> Repetir pedido
+            </button>
+          )}
         </div>
       </div>
 
@@ -933,15 +945,14 @@ export function PedidoDetallePage() {
               <p className="text-xs text-slate-600 mb-3">Imágenes adjuntas al crear el pedido.</p>
               <div className="flex flex-wrap gap-2">
                 {pedido.referenciasImagenes.map((r, i) => (
-                  <a
+                  <button
                     key={r.url}
-                    href={r.url}
-                    target="_blank"
-                    rel="noreferrer"
+                    type="button"
+                    onClick={() => setDocViewer({ url: r.url, title: `Referencia ${i + 1}` })}
                     className="block rounded-lg border border-slate-200 overflow-hidden bg-white shadow-sm hover:ring-2 hover:ring-sky-300 transition"
                   >
                     <img src={r.url} alt={`Referencia ${i + 1}`} className="h-28 w-28 object-cover" />
-                  </a>
+                  </button>
                 ))}
               </div>
             </div>
@@ -965,21 +976,22 @@ export function PedidoDetallePage() {
                     <div className="text-xs text-slate-500 mt-0.5">Emitida el {formatDateTime(pedido.firmadoEn)}</div>
                   )}
                 </div>
-                <a
-                  href={pedido.ordenCompraUrl}
-                  target="_blank"
-                  rel="noreferrer"
+                <button
+                  type="button"
+                  onClick={() => setShowOcViewer(true)}
                   className="btn btn-primary btn-sm gap-1.5"
                 >
-                  📄 Descargar OC
-                </a>
+                  📄 Ver orden de compra
+                </button>
               </div>
             </div>
           )}
           {pedido.facturaComprasUrl && (
             <div className="info-panel" style={{ borderColor: 'var(--purple-brd)', background: 'linear-gradient(135deg,#ede9fe,#f5f3ff)' }}>
               <div className="text-xs font-bold uppercase mb-2" style={{ color: 'var(--purple)' }}>🧾 Factura del proveedor (Compras)</div>
-              <a href={pedido.facturaComprasUrl} target="_blank" rel="noreferrer" className="doc-link">📄 Ver factura PDF →</a>
+              <button type="button" onClick={() => setDocViewer({ url: pedido.facturaComprasUrl!, title: 'Factura del proveedor' })} className="doc-link">
+                📄 Ver factura
+              </button>
               {pedido.facturaSubidaPor && (
                 <div className="text-xs text-slate-500 mt-2">Cargada por {fullName(pedido.facturaSubidaPor)}{pedido.facturaSubidaEn ? ` · ${formatDateTime(pedido.facturaSubidaEn)}` : ''}</div>
               )}
@@ -994,7 +1006,11 @@ export function PedidoDetallePage() {
                 <div><span className="text-slate-400">Fecha</span> <span className="font-semibold">{formatDate(sellado.fechaSellado)}</span></div>
                 <div><span className="text-slate-400">Monto</span> <span className="font-mono font-bold">{formatMoney(sellado.montoSellado)}</span></div>
               </div>
-              {sellado.comprobanteUrl && <a href={sellado.comprobanteUrl} target="_blank" rel="noreferrer" className="mt-2 doc-link">📄 Comprobante →</a>}
+              {sellado.comprobanteUrl && (
+                <button type="button" onClick={() => setDocViewer({ url: sellado.comprobanteUrl!, title: 'Comprobante de sellado' })} className="mt-2 doc-link">
+                  📄 Comprobante
+                </button>
+              )}
             </div>
           )}
           {/* Pago */}
@@ -1006,7 +1022,11 @@ export function PedidoDetallePage() {
                 <div><span className="text-slate-400">Fecha</span> <span className="font-semibold">{formatDate(pago.fechaPago)}</span></div>
                 <div><span className="text-slate-400">Monto</span> <span className="font-mono font-bold">{formatMoney(pago.montoPagado)}</span></div>
               </div>
-              {pago.facturaUrl && <a href={pago.facturaUrl} target="_blank" rel="noreferrer" className="mt-2 doc-link">📄 Factura →</a>}
+              {pago.facturaUrl && (
+                <button type="button" onClick={() => setDocViewer({ url: pago.facturaUrl!, title: 'Comprobante de pago' })} className="mt-2 doc-link">
+                  📄 Comprobante de pago
+                </button>
+              )}
             </div>
           )}
           {!pedido.firmaUrlUsada &&
@@ -1044,7 +1064,7 @@ export function PedidoDetallePage() {
                 <div className="info-pair-value flex items-center gap-2">
                   <span className="font-mono">{pedido.ordenCompraNumero}</span>
                   {pedido.ordenCompraUrl && (
-                    <a href={pedido.ordenCompraUrl} target="_blank" rel="noreferrer" className="doc-link text-xs">📄 Ver PDF →</a>
+                    <button type="button" onClick={() => setShowOcViewer(true)} className="doc-link text-xs">📄 Ver PDF →</button>
                   )}
                 </div>
               </div>
@@ -1090,6 +1110,15 @@ export function PedidoDetallePage() {
           numero={pedido.ordenCompraNumero}
           pedidoNumero={pedido.numero}
           onClose={() => setShowOcViewer(false)}
+        />
+      )}
+
+      {docViewer && (
+        <OcViewerModal
+          url={docViewer.url}
+          title={docViewer.title}
+          pedidoNumero={pedido.numero}
+          onClose={() => setDocViewer(null)}
         />
       )}
     </div>
