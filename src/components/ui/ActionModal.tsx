@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, type ReactNode } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 import type { Pedido, Presupuesto } from '../../types';
-import { PedidoStage } from '../../types';
+import { PedidoStage, AREAS } from '../../types';
 import { pedidosApi, selladosApi, pagosApi, configApi } from '../../api/services';
 import { useAuthStore } from '../../store/auth.store';
 import { formatMoney, formatDateTime, stageLabel, stageIcon, pedidoEstadoVisibleLabel } from '../../lib/utils';
@@ -18,6 +18,7 @@ import {
   ShieldAlert,
   Ban,
   ExternalLink,
+  Trash2,
 } from 'lucide-react';
 import { ButtonSpinner } from './loading';
 import { StepSuccessModal } from './StepSuccessModal';
@@ -83,6 +84,12 @@ const ACTION_SUCCESS_CONFIG: Record<string, SuccessConfig> = {
     nextStepSub: 'No se requieren más acciones. Todo el circuito de compras quedó registrado correctamente.',
     isFinal: true,
   },
+  'eliminar': {
+    theme: 'amber',
+    title: 'Pedido eliminado',
+    nextStep: 'El pedido fue removido del circuito.',
+    isFinal: true,
+  },
 };
 
 
@@ -122,6 +129,7 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
     enabled: action === 'firmar',
   });
   const [nota, setNota] = useState('');
+  const [areaRecepcion, setAreaRecepcion] = useState('');
   const [motivo, setMotivo] = useState('');
   const [numeroSellado, setNumeroSellado] = useState('');
   const [fechaSellado, setFechaSellado] = useState(new Date().toISOString().split('T')[0]);
@@ -146,7 +154,7 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
   const ocPollAttempts = useRef(0);
 
   useEffect(() => {
-    if (action === 'rechazar') {
+    if (action === 'rechazar' || action === 'eliminar') {
       setRechazoAck(false);
       setMotivo('');
     }
@@ -197,6 +205,8 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
     setError('');
     if (action === 'aprobar' || action === 'aprobar-urgente') {
       mut.mutate(pedidosApi.aprobar(pedido.id, nota) as any);
+    } else if (action === 'eliminar') {
+      mut.mutate(pedidosApi.remove(pedido.id) as any);
     } else if (action === 'rechazar') {
       const m = motivo.trim();
       if (!m) { setError('Ingresá el motivo del rechazo'); return; }
@@ -219,7 +229,7 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
         ) as any,
       );
     } else if (action === 'confirmar-recepcion') {
-      mut.mutate(pedidosApi.confirmarRecepcion(pedido.id, nota) as any);
+      mut.mutate(pedidosApi.confirmarRecepcion(pedido.id, nota, areaRecepcion || undefined) as any);
     } else if (action === 'sellado') {
       if (!numeroSellado || !montoSellado) { setError('Completá número y monto del sellado'); return; }
       mut.mutate(selladosApi.registrar(pedido.id, {
@@ -241,6 +251,7 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
   const titles: Record<string, string> = {
     'aprobar': '✅ Aprobar pedido',
     'aprobar-urgente': '🚨 Aprobar pedido urgente',
+    'eliminar': '🗑 Eliminar pedido',
     'rechazar': '✗ Rechazar pedido',
     'firmar': '✍️ Firmar presupuesto',
     'confirmar-recepcion': '📦 Confirmar recepción',
@@ -375,6 +386,8 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
             >
               {action === 'firmar'
                 ? '✍️ Confirmar firma del presupuesto'
+                : action === 'eliminar'
+                  ? '🗑 Confirmar eliminación del pedido'
                 : action === 'rechazar'
                   ? '✗ Confirmar rechazo del expediente'
                   : titles[action]}
@@ -385,6 +398,8 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
             >
               {action === 'firmar'
                 ? 'Revisá todos los datos antes de autorizar la compra con tu firma digital.'
+                : action === 'eliminar'
+                  ? 'Esta acción elimina el pedido antes de que Secretaría lo apruebe.'
                 : action === 'rechazar'
                   ? 'El trámite quedará cerrado. Indicá el motivo para registro y seguimiento del área.'
                   : `${pedido.numero} · ${pedido.descripcion}`}
@@ -396,6 +411,12 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
               </>
             )}
             {action === 'rechazar' && (
+              <>
+                <p className="mt-1 font-mono text-[11px] font-bold text-slate-500">{pedido.numero}</p>
+                <p className="mt-1 text-[12px] font-semibold text-slate-700 leading-snug line-clamp-2">{pedido.descripcion}</p>
+              </>
+            )}
+            {action === 'eliminar' && (
               <>
                 <p className="mt-1 font-mono text-[11px] font-bold text-slate-500">{pedido.numero}</p>
                 <p className="mt-1 text-[12px] font-semibold text-slate-700 leading-snug line-clamp-2">{pedido.descripcion}</p>
@@ -430,7 +451,59 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
         <div className="px-5 py-4 space-y-3.5 flex-1">
           {error && <div className="alert alert-danger">{error}</div>}
 
-          {action === 'rechazar' ? (() => {
+          {action === 'eliminar' ? (
+            <div className="space-y-4">
+              <div
+                className="rounded-xl border border-red-200 bg-gradient-to-br from-red-50 to-white px-4 py-3 flex gap-3 shadow-sm"
+                role="alert"
+              >
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-red-600 text-white shadow-md">
+                  <Trash2 size={20} strokeWidth={2.25} />
+                </div>
+                <div className="min-w-0">
+                  <div className="text-sm font-extrabold text-red-950 tracking-tight">Eliminación permanente</div>
+                  <p className="mt-1 text-xs text-red-950/90 leading-relaxed">
+                    Este pedido se eliminará por completo del sistema. Solo puede hacerse mientras siga en
+                    <strong> Aprobación de suministros</strong>.
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-slate-50/80 p-4 shadow-sm">
+                <div className="mb-3 flex items-center gap-2 text-xs font-extrabold uppercase tracking-wide text-slate-500">
+                  <Hash size={14} className="text-slate-400" />
+                  Pedido a eliminar
+                </div>
+                <ConfirmDetailRow label="N° pedido" value={<span className="font-mono">{pedido.numero}</span>} />
+                <ConfirmDetailRow label="Área solicitante" value={pedido.area} />
+                <ConfirmDetailRow label="Descripción" value={pedido.descripcion} />
+                <ConfirmDetailRow
+                  label="Solicitado por"
+                  value={nombreMostrado(pedido.creadoPor)}
+                />
+                <ConfirmDetailRow
+                  label="Etapa actual"
+                  value={
+                    <span>
+                      {stageIcon(pedido.stage)} {stageLabel(pedido.stage)}
+                    </span>
+                  }
+                />
+              </div>
+
+              <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <input
+                  type="checkbox"
+                  className="mt-1 h-4 w-4 shrink-0 rounded border-slate-300"
+                  checked={rechazoAck}
+                  onChange={(e) => setRechazoAck(e.target.checked)}
+                />
+                <span className="text-sm font-semibold text-slate-800 leading-snug">
+                  Confirmo que revisé el pedido y quiero <strong className="text-red-800">eliminarlo de forma permanente</strong>.
+                </span>
+              </label>
+            </div>
+          ) : action === 'rechazar' ? (() => {
             const nPresup =
               rechazarMeta?.presupuestosCargados ?? pedido.presupuestosCargados ?? 0;
             const etiquetaTrasRechazo = pedidoEstadoVisibleLabel({
@@ -759,7 +832,7 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
             );
           })() : (
             <>
-              {action !== 'rechazar' && !(action === 'firmar' && !firmarPresupuesto) && (
+              {action !== 'rechazar' && action !== 'eliminar' && !(action === 'firmar' && !firmarPresupuesto) && (
                 <div
                   className="rounded-[10px] p-3.5 space-y-2"
                   style={{
@@ -801,8 +874,54 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
             </>
           )}
 
-          {/* Nota/motivo */}
-          {(action === 'aprobar' || action === 'aprobar-urgente' || action === 'firmar' || action === 'confirmar-recepcion') && (
+          {/* Confirmar recepción: área que recibe + nota */}
+          {action === 'confirmar-recepcion' && (
+            <div className="space-y-3.5">
+              <div
+                className="rounded-xl border border-emerald-200 bg-emerald-50/70 px-4 py-3 text-sm text-emerald-900"
+              >
+                <Package className="inline h-4 w-4 mr-1.5 align-text-bottom text-emerald-700" />
+                Registrá el área que recibió los suministros y dejá una nota si fuera necesario.
+                Este registro queda en el historial del expediente.
+              </div>
+              <div>
+                <label className="label">
+                  Área que recibe los suministros
+                  <span className="ml-1.5 text-[10px] font-semibold text-slate-500 bg-slate-100 border border-slate-200 px-1.5 py-0.5 rounded-full uppercase tracking-wide">
+                    Opcional
+                  </span>
+                </label>
+                <select
+                  value={areaRecepcion}
+                  onChange={e => setAreaRecepcion(e.target.value)}
+                  className="input"
+                >
+                  <option value="">— No especificado —</option>
+                  {AREAS.map(a => (
+                    <option key={a} value={a}>{a}</option>
+                  ))}
+                </select>
+                {pedido.areaDestino && (
+                  <p className="mt-1.5 text-xs text-slate-500">
+                    Área destino registrada en el pedido: <strong>{pedido.areaDestino}</strong>
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className="label">Notas adicionales</label>
+                <textarea
+                  value={nota}
+                  onChange={e => setNota(e.target.value)}
+                  className="input resize-none"
+                  rows={3}
+                  placeholder="Ej: Entregado en depósito. Falta una unidad que llega la próxima semana..."
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Nota/motivo (otras acciones) */}
+          {(action === 'aprobar' || action === 'aprobar-urgente' || action === 'firmar') && (
             <div>
               <label className="label">Nota (opcional)</label>
               <textarea value={nota} onChange={e => setNota(e.target.value)} className="input resize-none" rows={3} placeholder="Notas adicionales..." />
@@ -976,12 +1095,15 @@ export function ActionModal({ pedido, action, onClose, onSuccess, firmarPresupue
                 || (modoFirma === 'digital' && !user?.firmaUrl)
                 || (modoFirma === 'escaneado' && !presupuestoFirmadoFile)
               ))
+              || (action === 'eliminar' && !rechazoAck)
               || (action === 'rechazar' && (!motivo.trim() || !rechazoAck))
             }
-            className={`btn ${action.includes('rechazar') ? 'btn-danger' : action === 'firmar' || action === 'confirmar-recepcion' || action === 'subir-factura' ? 'btn-success' : 'btn-primary'}`}
+            className={`btn ${action.includes('rechazar') || action === 'eliminar' ? 'btn-danger' : action === 'firmar' || action === 'confirmar-recepcion' || action === 'subir-factura' ? 'btn-success' : 'btn-primary'}`}
           >
             {mut.isPending
               ? <ButtonSpinner label="Procesando" />
+              : action === 'eliminar'
+                ? 'Eliminar pedido'
               : action === 'firmar'
                 ? 'Confirmar firma y autorizar compra'
                 : action === 'rechazar'

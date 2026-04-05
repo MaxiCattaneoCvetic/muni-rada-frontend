@@ -4,7 +4,7 @@ import type { Pedido } from '../../types';
 import { STAGE_LABELS, STAGE_AREA, STAGE_ICONS, STAGE_HELP_COPY, PedidoStage } from '../../types';
 import { cn, formatMoney, pedidoNeedsMyAction, ROLE_STAGES, ROLE_VISIBLE_STAGES, rolLabel, pedidoEstadoVisibleLabel } from '../../lib/utils';
 import { useAuthStore } from '../../store/auth.store';
-import { AlertTriangle, CircleHelp, DollarSign, Lock } from 'lucide-react';
+import { CheckCircle2, CircleHelp, DollarSign } from 'lucide-react';
 
 interface Props {
   pedidos: Pedido[];
@@ -201,8 +201,8 @@ function FechaLimiteBadge({ fecha }: { fecha: string }) {
   );
 }
 
-function CardAge({ createdAt }: { createdAt: string }) {
-  const days = Math.floor((Date.now() - new Date(createdAt).getTime()) / 86_400_000);
+function CardAge({ createdAt, todayStartMs }: { createdAt: string; todayStartMs: number }) {
+  const days = Math.floor((todayStartMs - new Date(createdAt).getTime()) / 86_400_000);
   const label = days === 0 ? 'hoy' : days === 1 ? '1d' : `${days}d`;
   const color =
     days >= 7 ? 'var(--red-mid)' : days >= 3 ? 'var(--amber-mid)' : 'var(--text3)';
@@ -242,6 +242,11 @@ export function KanbanBoard({
   const helpTooltipRef = useRef<HTMLDivElement | null>(null);
   const stageHelpAnchorRefs = useRef<Record<number, HTMLDivElement | null>>({});
   const helpLeaveTimerRef = useRef<number | null>(null);
+  const [todayStartMs] = useState(() => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    return today.getTime();
+  });
 
   const stages = useMemo(() => {
     let base = visibleStages ?? STAGES;
@@ -273,10 +278,7 @@ export function KanbanBoard({
     : pedidos;
 
   useLayoutEffect(() => {
-    if (openHelpStage === null) {
-      setHelpTooltipPos(null);
-      return;
-    }
+    if (openHelpStage === null) return;
     const update = () => {
       const el = stageHelpAnchorRefs.current[openHelpStage];
       if (!el) return;
@@ -617,7 +619,6 @@ export function KanbanBoard({
                   </div>
                 )}
                 {sorted.map(p => {
-                  const needsMe = pedidoNeedsMyAction(p.stage, user?.rol || '');
                   const hasAction = (() => {
                     if (user?.rol === 'secretaria' && (p.stage === PedidoStage.APROBACION || p.stage === PedidoStage.FIRMA)) return true;
                     if (user?.rol === 'compras' && (p.stage === PedidoStage.PRESUPUESTOS || p.stage === PedidoStage.CARGA_FACTURA)) return true;
@@ -629,67 +630,39 @@ export function KanbanBoard({
                   const filled = p.presupuestosCargados ?? 0;
                   const isPresupuestoReady = filled >= 1;
 
+                  const isDelivered = p.stage === PedidoStage.SUMINISTROS_LISTOS;
+                  const requiresSellado = p.bloqueado;
+
                   return (
                     <div
                       key={p.id}
                       onClick={() => onPedidoClick(p)}
                       className={cn(
-                        'p-3 cursor-pointer transition-all',
-                        p.bloqueado && !needsMe && 'border-red-200 bg-red-50',
+                        'kanban-pedido-card p-3 cursor-pointer',
+                        isDelivered && 'kanban-pedido-card--delivered',
                       )}
-                      style={{
-                        borderRadius: '12px',
-                        border: needsMe
-                          ? (p.urgente
-                            ? '1.5px solid var(--red-brd)'
-                            : '1.5px solid var(--blue-brd)')
-                          : '1.5px solid var(--border)',
-                        background: needsMe
-                          ? (p.urgente
-                            ? 'linear-gradient(135deg, #fee2e2, #fef2f2)'
-                            : 'linear-gradient(135deg, #dbeafe, #eff6ff)')
-                          : 'var(--white)',
-                        borderLeftWidth: needsMe ? '4px' : '1.5px',
-                        boxShadow: needsMe
-                          ? (p.urgente
-                            ? '0 0 0 1px rgba(239,68,68,.06), 0 4px 12px rgba(239,68,68,.14)'
-                            : '0 0 0 1px rgba(59,130,246,.08), 0 4px 12px rgba(59,130,246,.14)')
-                          : '0 6px 16px rgba(15,23,42,.06), inset 0 1px 0 rgba(255,255,255,.75)',
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.transform = 'translateY(-3px)';
-                        e.currentTarget.style.boxShadow = needsMe
-                          ? (p.urgente
-                            ? '0 0 0 1px rgba(239,68,68,.08), 0 8px 18px rgba(239,68,68,.18)'
-                            : '0 0 0 1px rgba(59,130,246,.1), 0 8px 18px rgba(59,130,246,.18)')
-                          : 'var(--shadow-sm)';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.transform = 'translateY(0)';
-                        e.currentTarget.style.boxShadow = needsMe
-                          ? (p.urgente
-                            ? '0 0 0 1px rgba(239,68,68,.06), 0 4px 12px rgba(239,68,68,.14)'
-                            : '0 0 0 1px rgba(59,130,246,.08), 0 4px 12px rgba(59,130,246,.14)')
-                          : '0 12px 24px rgba(15,23,42,.09), inset 0 1px 0 rgba(255,255,255,.75)';
-                      }}
                     >
                       {/* Card top row: number + age + status icons */}
                       <div className="mb-2 flex items-center justify-between gap-2">
-                        <span
-                          className="rounded-full border px-2.5 py-0.5 font-mono font-semibold"
-                          style={{
-                            fontSize: '11px',
-                            color: 'var(--text2)',
-                            borderColor: 'var(--border2)',
-                            background: 'var(--surface2)',
-                          }}
-                        >
-                          {p.numero}
-                        </span>
                         <div className="flex items-center gap-1.5">
-                          <CardAge createdAt={p.createdAt} />
-                          {p.bloqueado && <Lock size={11} style={{ color: 'var(--red)' }} />}
-                          {p.urgente && <AlertTriangle size={11} style={{ color: 'var(--red)' }} />}
+                          <span
+                            className="rounded-full border px-2.5 py-0.5 font-mono font-semibold"
+                            style={{
+                              fontSize: '11px',
+                              color: isDelivered ? 'var(--green)' : 'var(--sky)',
+                              borderColor: isDelivered ? 'rgba(22,101,52,.18)' : 'rgba(3,105,161,.18)',
+                              background: 'rgba(255,255,255,.82)',
+                              boxShadow: 'inset 0 1px 0 rgba(255,255,255,.95)',
+                            }}
+                          >
+                            {p.numero}
+                          </span>
+                          {isDelivered && (
+                            <CheckCircle2 size={13} style={{ color: 'var(--green-mid)', flexShrink: 0 }} />
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <CardAge createdAt={p.createdAt} todayStartMs={todayStartMs} />
                         </div>
                       </div>
 
@@ -719,14 +692,21 @@ export function KanbanBoard({
 
                       {/* Badges */}
                       <div className="flex flex-wrap gap-1">
+                        {p.urgente && (
+                          <span className="badge badge-amber" style={{ fontSize: '9px' }}>
+                            ⚡ Urgente
+                          </span>
+                        )}
+                        {requiresSellado && (
+                          <span className="badge badge-red" style={{ fontSize: '9px' }}>
+                            🔒 Requiere sellado
+                          </span>
+                        )}
                         {p.monto && (
                           <span className="badge badge-amber gap-1" style={{ fontSize: '9px' }}>
                             <DollarSign size={10} />
                             {formatMoney(p.monto)}
                           </span>
-                        )}
-                        {p.bloqueado && (
-                          <span className="badge badge-red" style={{ fontSize: '9px' }}>🔒 Bloqueado</span>
                         )}
                         {p.stage === PedidoStage.GESTION_PAGOS && p.fechaLimitePago && (
                           <FechaLimiteBadge fecha={p.fechaLimitePago} />

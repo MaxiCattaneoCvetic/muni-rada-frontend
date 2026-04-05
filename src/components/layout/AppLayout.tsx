@@ -79,7 +79,7 @@ export function AppLayout({ children }: { children: React.ReactNode }) {
   const navBadgeCount = {
     aprobar: pedidos.filter((p) => p.stage === PedidoStage.APROBACION).length,
     firmar: pedidos.filter((p) => p.stage === PedidoStage.FIRMA).length,
-    presupuestos: pedidos.filter((p) => p.stage === PedidoStage.PRESUPUESTOS || p.stage === PedidoStage.CARGA_FACTURA).length,
+    presupuestos: pedidos.filter((p) => p.stage === PedidoStage.PRESUPUESTOS).length,
     // Show count of stage-5 pedidos that are urgent (no date, overdue, or due within 3 days)
     pagos: pedidos.filter((p) => {
       if (p.stage !== PedidoStage.GESTION_PAGOS) return false;

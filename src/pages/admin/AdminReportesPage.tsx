@@ -24,6 +24,7 @@ import { reportesApi, type Reporte, type EstadoReporte, type TipoReporte, type P
 import { ButtonSpinner, RadaTillyLoader } from '../../components/ui/loading';
 import { formatDateTime } from '../../lib/utils';
 import { TicketChat } from '../../components/reportar/TicketChat';
+import { OcViewerModal } from '../../components/ui/OcViewerModal';
 
 // ── helpers ──────────────────────────────────────────────────────────
 
@@ -167,6 +168,7 @@ function TicketDetailModal({ ticket, onClose, onEstadoChange }: {
   const qc        = useQueryClient();
   const [nota, setNota] = useState('');
   const [showNota, setShowNota] = useState(false);
+  const [showScreenshotViewer, setShowScreenshotViewer] = useState(false);
   const tipo      = TIPO_META[ticket.tipo];
   const prioridad = PRIORIDAD_META[ticket.prioridad];
   const estado    = ESTADO_META[ticket.estado];
@@ -184,20 +186,21 @@ function TicketDetailModal({ ticket, onClose, onEstadoChange }: {
   });
 
   return (
-    <div
-      className="fixed inset-0 z-[300] flex items-center justify-center p-5"
-      style={{ background: 'rgba(15,23,42,.55)', backdropFilter: 'blur(4px)' }}
-      onClick={(e) => e.target === e.currentTarget && onClose()}
-    >
+    <>
       <div
-        className="w-full max-w-[680px] max-h-[90vh] overflow-y-auto flex flex-col anim"
-        style={{
-          background: 'var(--white)',
-          borderRadius: '20px',
-          boxShadow: 'var(--shadow-lg)',
-          border: '1px solid rgba(255,255,255,.8)',
-        }}
+        className="fixed inset-0 z-[300] flex items-center justify-center p-5"
+        style={{ background: 'rgba(15,23,42,.55)', backdropFilter: 'blur(4px)' }}
+        onClick={(e) => e.target === e.currentTarget && onClose()}
       >
+        <div
+          className="w-full max-w-[680px] max-h-[90vh] overflow-y-auto flex flex-col anim"
+          style={{
+            background: 'var(--white)',
+            borderRadius: '20px',
+            boxShadow: 'var(--shadow-lg)',
+            border: '1px solid rgba(255,255,255,.8)',
+          }}
+        >
         {/* Header */}
         <div
           className="px-5 py-4 flex items-start justify-between gap-3 sticky top-0 z-10"
@@ -265,15 +268,14 @@ function TicketDetailModal({ ticket, onClose, onEstadoChange }: {
               <div className="label">Screenshot adjunto</div>
               <div className="relative overflow-hidden rounded-xl" style={{ border: '1px solid var(--border)' }}>
                 <img src={ticket.screenshotUrl} alt="Screenshot del problema" className="w-full object-cover" style={{ maxHeight: '220px' }} />
-                <a
-                  href={ticket.screenshotUrl}
-                  target="_blank"
-                  rel="noreferrer"
+                <button
+                  type="button"
+                  onClick={() => setShowScreenshotViewer(true)}
                   className="absolute bottom-3 right-3 flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-white"
                   style={{ fontSize: '11px', background: 'rgba(15,23,42,.7)', backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,.15)' }}
                 >
                   <ExternalLink size={11} />Ver completo
-                </a>
+                </button>
               </div>
             </div>
           )}
@@ -355,8 +357,17 @@ function TicketDetailModal({ ticket, onClose, onEstadoChange }: {
             </div>
           </div>
         </div>
+        </div>
       </div>
-    </div>
+
+      {showScreenshotViewer && ticket.screenshotUrl && (
+        <OcViewerModal
+          url={ticket.screenshotUrl}
+          title="Screenshot del reporte"
+          onClose={() => setShowScreenshotViewer(false)}
+        />
+      )}
+    </>
   );
 }
 

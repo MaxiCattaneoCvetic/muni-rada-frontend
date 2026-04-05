@@ -194,12 +194,40 @@ export interface Pedido {
   fechaLimitePago?: string;
   recepcionConfirmadaPor?: User;
   recepcionEn?: string;
+  notaRecepcion?: string;
+  areaRecepcion?: string;
   createdAt: string;
   updatedAt: string;
   /** Fecha en que el pedido fue archivado. NULL = activo en el kanban. */
   archivedAt?: string | null;
   /** Cantidad de presupuestos cargados (viene del listado de pedidos). */
   presupuestosCargados?: number;
+}
+
+// ── Audit Log ─────────────────────────────────────────────────────────
+export type PedidoAuditEvento =
+  | 'CREACION'
+  | 'APROBACION'
+  | 'RECHAZO'
+  | 'PRESUPUESTO_ENVIADO'
+  | 'PRESUPUESTO_RECHAZADO'
+  | 'FIRMA'
+  | 'FACTURA_SUBIDA'
+  | 'PAGO'
+  | 'RECEPCION_CONFIRMADA'
+  | 'ARCHIVADO';
+
+export interface PedidoAuditLog {
+  id: string;
+  pedidoId: string;
+  evento: PedidoAuditEvento;
+  usuario?: User | null;
+  area?: string | null;
+  nota?: string | null;
+  stageAnterior?: number | null;
+  stageNuevo?: number | null;
+  metadata?: Record<string, unknown> | null;
+  createdAt: string;
 }
 
 // ── Proveedores (catálogo) ────────────────────────────────────────────
@@ -346,6 +374,8 @@ export interface FinanzasResumen {
   filters: {
     area: AreaMunicipal | null;
     proveedor: string | null;
+    monthStart?: number | null;
+    monthEnd?: number | null;
   };
   totalGastado: number;
   cantidadPagos: number;

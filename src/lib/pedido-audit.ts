@@ -1,4 +1,4 @@
-import type { Pedido, Presupuesto, Sellado, Pago, User } from '../types';
+import type { Pedido, Presupuesto, Sellado, Pago, User, PedidoAuditLog } from '../types';
 import { PedidoStage, STAGE_OWNER_LABELS } from '../types';
 import { rolLabel, pedidoEstadoVisibleLabel } from './utils';
 
@@ -75,9 +75,12 @@ export function buildPedidoAuditTimeline(
       pedido.stage >= PedidoStage.PRESUPUESTOS);
 
   if (pasoAprobacion && pedido.aprobadoPor) {
+    // La aprobación ocurre justo después de la creación; como no tenemos `aprobadoEn`
+    // usamos createdAt + 1 ms para que siempre quede por delante de los presupuestos.
+    const aprobacionAt = new Date(new Date(pedido.createdAt).getTime() + 1).toISOString();
     entries.push({
       id: 'aprobacion',
-      at: pedido.updatedAt,
+      at: aprobacionAt,
       icon: '✅',
       title: 'Aprobación inicial de Secretaría',
       actor: fullName(pedido.aprobadoPor),
@@ -87,19 +90,17 @@ export function buildPedidoAuditTimeline(
     });
   }
 
-  if (pedido.proveedorSeleccionado && (pedido.monto != null || pedido.monto === 0)) {
-    entries.push({
-      id: 'proveedor-elegido',
-      at: pedido.firmadoEn || pedido.facturaSubidaEn || pedido.updatedAt,
-      icon: '🎯',
-      title: 'Proveedor y monto elegidos para compra',
-      actor: '—',
-      sector: STAGE_OWNER_LABELS[PedidoStage.PRESUPUESTOS],
-      detail: `${pedido.proveedorSeleccionado} · ${formatMoneyEs(pedido.monto)}`,
-    });
-  }
-
   if (pedido.firmadoPor) {
+    const firmaDetail = [
+      pedido.proveedorSeleccionado
+        ? `Proveedor elegido: ${pedido.proveedorSeleccionado}${pedido.monto != null ? ` · ${formatMoneyEs(pedido.monto)}` : ''}.`
+        : null,
+      'Presupuesto firmado digitalmente.',
+      pedido.firmaHash ? `Huella: ${pedido.firmaHash}` : null,
+      pedido.bloqueado ? 'Quedó sujeto a sellado antes de pago.' : null,
+    ]
+      .filter(Boolean)
+      .join(' ');
     entries.push({
       id: 'firma',
       at: pedido.firmadoEn || pedido.updatedAt,
@@ -108,13 +109,7 @@ export function buildPedidoAuditTimeline(
       actor: fullName(pedido.firmadoPor),
       actorRol: rolEtiqueta(pedido.firmadoPor),
       sector: STAGE_OWNER_LABELS[PedidoStage.FIRMA],
-      detail: [
-        'Presupuesto firmado digitalmente.',
-        pedido.firmaHash ? `Huella registrada: ${pedido.firmaHash}` : null,
-        pedido.bloqueado ? 'Quedó sujeto a sellado antes de pago.' : null,
-      ]
-        .filter(Boolean)
-        .join(' '),
+      detail: firmaDetail,
     });
   }
 
@@ -158,6 +153,10 @@ export function buildPedidoAuditTimeline(
   }
 
   if (pedido.recepcionConfirmadaPor) {
+    const recepcionDetail = [
+      pedido.areaRecepcion ? `Recibido en: ${pedido.areaRecepcion}.` : null,
+      pedido.notaRecepcion ? pedido.notaRecepcion : 'El pedido pasó a estado completado en el circuito.',
+    ].filter(Boolean).join(' ');
     entries.push({
       id: 'recepcion',
       at: pedido.recepcionEn || pedido.updatedAt,
@@ -165,8 +164,8 @@ export function buildPedidoAuditTimeline(
       title: 'Recepción de suministros confirmada',
       actor: fullName(pedido.recepcionConfirmadaPor),
       actorRol: rolEtiqueta(pedido.recepcionConfirmadaPor),
-      sector: STAGE_OWNER_LABELS[PedidoStage.SUMINISTROS_LISTOS],
-      detail: 'El pedido pasó a estado completado en el circuito.',
+      sector: pedido.areaRecepcion || STAGE_OWNER_LABELS[PedidoStage.SUMINISTROS_LISTOS],
+      detail: recepcionDetail,
     });
   }
 
@@ -189,6 +188,68 @@ export function buildPedidoAuditTimeline(
   entries.sort((a, b) => new Date(a.at).getTime() - new Date(b.at).getTime());
 
   return entries;
+}
+
+const EVENTO_LABELS: Record<string, { icon: string; title: string }> = {
+  CREACION:              { icon: '📥', title: 'Inicio del trámite' },
+  APROBACION:            { icon: '✅', title: 'Aprobación de Secretaría' },
+  RECHAZO:               { icon: '⛔', title: 'Expediente rechazado' },
+  PRESUPUESTO_ENVIADO:   { icon: '📋', title: 'Presupuesto enviado a Firma' },
+  PRESUPUESTO_RECHAZADO: { icon: '↩️', title: 'Presupuesto devuelto a Compras' },
+  FIRMA:                 { icon: '✍️', title: 'Presupuesto firmado' },
+  FACTURA_SUBIDA:        { icon: '🧾', title: 'Factura del proveedor cargada' },
+  PAGO:                  { icon: '💳', title: 'Pago registrado' },
+  RECEPCION_CONFIRMADA:  { icon: '📦', title: 'Recepción de suministros confirmada' },
+  ARCHIVADO:             { icon: '🗂️', title: 'Expediente archivado' },
+};
+
+/**
+ * Convierte los registros de DB (PedidoAuditLog[]) al mismo formato de PedidoAuditEntry
+ * para ser renderizados en la misma timeline.
+ */
+export function buildAuditTimelineFromLog(logs: PedidoAuditLog[]): PedidoAuditEntry[] {
+  return logs.map((log) => {
+    const label = EVENTO_LABELS[log.evento] ?? { icon: '🔹', title: log.evento };
+    const actor = log.usuario
+      ? (log.usuario as User & { nombreCompleto?: string }).nombreCompleto
+        || [log.usuario.nombre, log.usuario.apellido].filter(Boolean).join(' ')
+        || '—'
+      : '—';
+    const actorRol = log.usuario?.rol ? rolLabel(log.usuario.rol) : undefined;
+
+    const m = (log.metadata ?? {}) as Record<string, unknown>;
+    const detailParts: string[] = [];
+    // Para recepción: área receptora va primero y es el dato clave
+    if (log.evento === 'RECEPCION_CONFIRMADA') {
+      if (m.areaRecepcion) detailParts.push(`Área receptora: ${m.areaRecepcion}`);
+      if (log.nota) detailParts.push(log.nota);
+      if (!detailParts.length) detailParts.push('El circuito quedó cerrado.');
+    } else {
+      if (log.nota) detailParts.push(log.nota);
+      if (m.proveedor) detailParts.push(`Proveedor: ${m.proveedor}`);
+      if (m.monto) detailParts.push(`Monto: ${formatMoneyEs(m.monto as number)}`);
+      if (m.areaRecepcion) detailParts.push(`Área receptora: ${m.areaRecepcion}`);
+      if (m.firmaHash) detailParts.push(`Huella: ${m.firmaHash}`);
+    }
+    const detail = detailParts.join(' · ') || '—';
+
+    // Para recepción: el sector es el área que recibió, no el label genérico
+    const sectorOverride =
+      log.evento === 'RECEPCION_CONFIRMADA' && typeof m.areaRecepcion === 'string' && m.areaRecepcion
+        ? m.areaRecepcion
+        : undefined;
+
+    return {
+      id: log.id,
+      at: log.createdAt,
+      icon: label.icon,
+      title: label.title,
+      actor,
+      actorRol,
+      sector: sectorOverride || log.area || '—',
+      detail,
+    };
+  });
 }
 
 function formatMoneyEs(n: number | string | undefined): string {

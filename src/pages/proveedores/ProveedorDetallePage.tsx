@@ -1,18 +1,24 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Link, useParams } from 'react-router-dom';
 import { proveedoresApi } from '../../api/services';
 import { ButtonSpinner, RadaTillyLoader } from '../../components/ui/loading';
+import { OcViewerModal } from '../../components/ui/OcViewerModal';
 import { formatDate, formatDateTime, formatMoney } from '../../lib/utils';
-import { ArrowLeft, ExternalLink, FileText, MessageSquare, UserCircle } from 'lucide-react';
+import { ArrowLeft, FileText, MessageSquare, UserCircle } from 'lucide-react';
 
 type TabId = 'datos' | 'facturas' | 'comentarios';
+type DocumentFilter = 'todos' | 'facturas' | 'cotizaciones';
 
 export function ProveedorDetallePage() {
   const { id } = useParams<{ id: string }>();
   const qc = useQueryClient();
   const [tab, setTab] = useState<TabId>('datos');
   const [nuevoComentario, setNuevoComentario] = useState('');
+  const [facturaViewer, setFacturaViewer] = useState<{ url: string; title: string; pedidoNumero: string } | null>(null);
+  const [documentFilter, setDocumentFilter] = useState<DocumentFilter>('todos');
+  const [fechaDesde, setFechaDesde] = useState('');
+  const [fechaHasta, setFechaHasta] = useState('');
 
   const { data: prov, isLoading, isError } = useQuery({
     queryKey: ['proveedores', id],
@@ -40,6 +46,26 @@ export function ProveedorDetallePage() {
     },
   });
 
+  const tabs: { id: TabId; label: string }[] = [
+    { id: 'datos', label: 'Datos' },
+    { id: 'facturas', label: 'Facturas y cotizaciones' },
+    { id: 'comentarios', label: 'Comentarios' },
+  ];
+
+  const filteredFacturas = useMemo(() => {
+    return facturas.filter((factura) => {
+      const matchesType = documentFilter === 'todos'
+        || (documentFilter === 'cotizaciones' && factura.tipo === 'cotizacion')
+        || (documentFilter === 'facturas' && factura.tipo !== 'cotizacion');
+
+      const facturaFecha = factura.fecha.slice(0, 10);
+      const matchesDesde = !fechaDesde || facturaFecha >= fechaDesde;
+      const matchesHasta = !fechaHasta || facturaFecha <= fechaHasta;
+
+      return matchesType && matchesDesde && matchesHasta;
+    });
+  }, [documentFilter, facturas, fechaDesde, fechaHasta]);
+
   if (!id) {
     return (
       <div className="page-shell-form">
@@ -66,12 +92,6 @@ export function ProveedorDetallePage() {
       </div>
     );
   }
-
-  const tabs: { id: TabId; label: string }[] = [
-    { id: 'datos', label: 'Datos' },
-    { id: 'facturas', label: 'Facturas y cotizaciones' },
-    { id: 'comentarios', label: 'Comentarios' },
-  ];
 
   return (
     <div className="page-shell-form">
@@ -187,57 +207,127 @@ export function ProveedorDetallePage() {
               No hay facturas ni cotizaciones PDF asociadas a este nombre en pedidos todavía.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200 bg-slate-50/80">
-                    <th className="text-left p-3 font-bold text-slate-600">Tipo</th>
-                    <th className="text-left p-3 font-bold text-slate-600">Pedido</th>
-                    <th className="text-left p-3 font-bold text-slate-600 hidden md:table-cell">Descripción</th>
-                    <th className="text-right p-3 font-bold text-slate-600 hidden sm:table-cell">Monto</th>
-                    <th className="text-left p-3 font-bold text-slate-600">Fecha</th>
-                    <th className="text-right p-3 font-bold text-slate-600">Archivo</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {facturas.map((f, i) => (
-                    <tr key={`${f.url}-${i}`} className="border-b border-slate-100 hover:bg-slate-50/50">
-                      <td className="p-3">
-                        <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600">
-                          <FileText className="w-3.5 h-3.5 opacity-60" />
-                          {f.etiqueta}
-                        </span>
-                      </td>
-                      <td className="p-3">
-                        <Link
-                          to={`/pedidos/${f.pedidoId}`}
-                          className="font-bold text-[var(--purple)] hover:underline"
-                        >
-                          {f.pedidoNumero}
-                        </Link>
-                      </td>
-                      <td className="p-3 text-slate-600 hidden md:table-cell max-w-[240px] truncate" title={f.descripcion}>
-                        {f.descripcion || '—'}
-                      </td>
-                      <td className="p-3 text-right text-slate-700 hidden sm:table-cell">
-                        {f.monto != null ? formatMoney(f.monto) : '—'}
-                      </td>
-                      <td className="p-3 text-slate-500 whitespace-nowrap">{formatDate(f.fecha)}</td>
-                      <td className="p-3 text-right">
-                        <a
-                          href={f.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1 text-[var(--purple)] font-semibold hover:underline"
-                        >
-                          Abrir
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div>
+              <div className="border-b border-slate-200 bg-slate-50/70 px-4 py-4">
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {[
+                      { id: 'todos' as const, label: 'Todos' },
+                      { id: 'facturas' as const, label: 'Facturas' },
+                      { id: 'cotizaciones' as const, label: 'Cotizaciones' },
+                    ].map((option) => (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => setDocumentFilter(option.id)}
+                        className={`px-3 py-1.5 rounded-full text-sm font-semibold border transition-colors ${
+                          documentFilter === option.id
+                            ? 'text-white border-transparent shadow-sm'
+                            : 'bg-white text-slate-600 border-slate-200 hover:border-slate-300'
+                        }`}
+                        style={documentFilter === option.id ? { background: 'var(--purple)' } : undefined}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+                    <div className="min-w-[210px]">
+                      <label className="label">Desde</label>
+                      <input
+                        type="date"
+                        value={fechaDesde}
+                        onChange={(e) => setFechaDesde(e.target.value)}
+                        className="input"
+                      />
+                    </div>
+                    <div className="min-w-[210px]">
+                      <label className="label">Hasta</label>
+                      <input
+                        type="date"
+                        value={fechaHasta}
+                        onChange={(e) => setFechaHasta(e.target.value)}
+                        className="input"
+                      />
+                    </div>
+                    {(fechaDesde || fechaHasta || documentFilter !== 'todos') && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDocumentFilter('todos');
+                          setFechaDesde('');
+                          setFechaHasta('');
+                        }}
+                        className="btn btn-secondary btn-sm"
+                      >
+                        Limpiar filtros
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                <p className="mt-3 text-sm text-slate-500">
+                  Mostrando {filteredFacturas.length} de {facturas.length} documento{facturas.length !== 1 ? 's' : ''}.
+                </p>
+              </div>
+
+              <div className="overflow-x-auto">
+                {filteredFacturas.length === 0 ? (
+                  <div className="p-8 text-center text-slate-500 text-sm">
+                    No hay resultados para el tipo o la fecha seleccionada.
+                  </div>
+                ) : (
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50/80">
+                        <th className="text-left p-3 font-bold text-slate-600">Tipo</th>
+                        <th className="text-left p-3 font-bold text-slate-600">Pedido</th>
+                        <th className="text-left p-3 font-bold text-slate-600 hidden md:table-cell">Descripción</th>
+                        <th className="text-right p-3 font-bold text-slate-600 hidden sm:table-cell">Monto</th>
+                        <th className="text-left p-3 font-bold text-slate-600">Fecha</th>
+                        <th className="text-right p-3 font-bold text-slate-600">Archivo</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredFacturas.map((f, i) => (
+                        <tr key={`${f.url}-${i}`} className="border-b border-slate-100 hover:bg-slate-50/50">
+                          <td className="p-3">
+                            <span className="inline-flex items-center gap-1 text-xs font-semibold text-slate-600">
+                              <FileText className="w-3.5 h-3.5 opacity-60" />
+                              {f.etiqueta}
+                            </span>
+                          </td>
+                          <td className="p-3">
+                            <Link
+                              to={`/pedidos/${f.pedidoId}`}
+                              className="font-bold text-[var(--purple)] hover:underline"
+                            >
+                              {f.pedidoNumero}
+                            </Link>
+                          </td>
+                          <td className="p-3 text-slate-600 hidden md:table-cell max-w-[240px] truncate" title={f.descripcion}>
+                            {f.descripcion || '—'}
+                          </td>
+                          <td className="p-3 text-right text-slate-700 hidden sm:table-cell">
+                            {f.monto != null ? formatMoney(f.monto) : '—'}
+                          </td>
+                          <td className="p-3 text-slate-500 whitespace-nowrap">{formatDate(f.fecha)}</td>
+                          <td className="p-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => setFacturaViewer({ url: f.url, title: f.etiqueta, pedidoNumero: f.pedidoNumero })}
+                              className="inline-flex items-center gap-1 text-[var(--purple)] font-semibold hover:underline"
+                            >
+                              Abrir
+                            </button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
             </div>
           )}
         </div>
@@ -296,6 +386,15 @@ export function ProveedorDetallePage() {
             )}
           </div>
         </div>
+      )}
+
+      {facturaViewer && (
+        <OcViewerModal
+          url={facturaViewer.url}
+          title={facturaViewer.title}
+          pedidoNumero={facturaViewer.pedidoNumero}
+          onClose={() => setFacturaViewer(null)}
+        />
       )}
     </div>
   );

@@ -181,19 +181,26 @@ export function HistorialPage() {
               </tr>
             </thead>
             <tbody>
-              {pageItems.map(p => (
-                <tr key={p.id} onClick={() => navigate(`/pedidos/${p.id}`)} className="hover:bg-slate-50 cursor-pointer transition-colors">
-                  <td className="px-4 py-3 font-mono text-xs text-slate-400">{p.numero}</td>
-                  <td className="px-4 py-3 font-semibold">{p.descripcion}{p.urgente && <span className="ml-2 badge badge-red text-xs">URG</span>}</td>
-                  <td className="px-4 py-3 text-slate-500">{p.area}</td>
-                  <td className="px-4 py-3"><span className={`badge ${stageBadgeClass(p.stage)}`}>{pedidoEstadoVisibleLabel(p)}</span></td>
-                  <td className="px-4 py-3 font-mono text-sm">{formatMoney(p.monto)}</td>
-                  <td className="px-4 py-3 text-slate-400">{formatDate(p.createdAt)}</td>
-                  {activeTab === 'archivados' && (
-                    <td className="px-4 py-3 text-slate-400">{p.archivedAt ? formatDate(p.archivedAt) : '—'}</td>
-                  )}
-                </tr>
-              ))}
+              {pageItems.map(p => {
+                const isDelivered = p.stage === 7;
+                return (
+                  <tr key={p.id} onClick={() => navigate(`/pedidos/${p.id}`)} className={`cursor-pointer transition-colors ${isDelivered ? 'bg-emerald-50/50 hover:bg-emerald-50' : 'hover:bg-slate-50'}`}>
+                    <td className={`px-4 py-3 font-mono text-xs ${isDelivered ? 'text-emerald-600' : 'text-slate-400'}`}>{p.numero}</td>
+                    <td className={`px-4 py-3 font-semibold ${isDelivered ? 'text-emerald-800' : ''}`}>
+                      {isDelivered && <span className="mr-1.5">✅</span>}
+                      {p.descripcion}
+                      {p.urgente && <span className="ml-2 badge badge-amber text-xs">URG</span>}
+                    </td>
+                    <td className="px-4 py-3 text-slate-500">{p.area}</td>
+                    <td className="px-4 py-3"><span className={`badge ${stageBadgeClass(p.stage)}`}>{pedidoEstadoVisibleLabel(p)}</span></td>
+                    <td className="px-4 py-3 font-mono text-sm">{formatMoney(p.monto)}</td>
+                    <td className="px-4 py-3 text-slate-400">{formatDate(p.createdAt)}</td>
+                    {activeTab === 'archivados' && (
+                      <td className="px-4 py-3 text-slate-400">{p.archivedAt ? formatDate(p.archivedAt) : '—'}</td>
+                    )}
+                  </tr>
+                );
+              })}
               {pageItems.length === 0 && !isLoading && (
                 <tr>
                   <td colSpan={activeTab === 'archivados' ? 7 : 6} className="px-4 py-10 text-center text-slate-400 text-sm">
@@ -527,26 +534,33 @@ export function AdminPedidosPage() {
               <tr>{['N°','Descripción','Área','Responsable','Estado','Monto'].map(h => <th key={h} className="px-4 py-3 text-left font-semibold text-slate-500 text-xs uppercase">{h}</th>)}</tr>
             </thead>
             <tbody>
-              {pageItems.map(p => (
-                <tr key={p.id} onClick={() => navigate(`/pedidos/${p.id}`)} className="hover:bg-slate-50 cursor-pointer">
-                  <td className="px-4 py-3 font-mono text-xs text-slate-400">{p.numero}</td>
-                  <td className="px-4 py-3 font-semibold">{p.descripcion}{p.urgente && <span className="ml-1 badge badge-red" style={{fontSize:'9px'}}>URG</span>}</td>
-                  <td className="px-4 py-3 text-slate-500 text-xs">{p.area}</td>
-                  <td className="px-4 py-3 text-slate-500 text-xs">
-                    {p.stage === 1 || p.stage === 3
-                      ? 'Secretaría'
-                      : p.stage === 2 || p.stage === 4
-                        ? 'Compras'
-                        : p.stage === 5
-                          ? 'Tesorería'
-                          : p.stage === 6
-                            ? 'Admin'
-                            : '—'}
-                  </td>
-                  <td className="px-4 py-3"><span className={`badge ${stageBadgeClass(p.stage)}`}>{pedidoEstadoVisibleLabel(p)}</span></td>
-                  <td className="px-4 py-3 font-mono text-sm">{formatMoney(p.monto)}</td>
-                </tr>
-              ))}
+              {pageItems.map(p => {
+                const isDelivered = p.stage === 7;
+                return (
+                  <tr key={p.id} onClick={() => navigate(`/pedidos/${p.id}`)} className={`cursor-pointer transition-colors ${isDelivered ? 'bg-emerald-50/50 hover:bg-emerald-50' : 'hover:bg-slate-50'}`}>
+                    <td className={`px-4 py-3 font-mono text-xs ${isDelivered ? 'text-emerald-600' : 'text-slate-400'}`}>{p.numero}</td>
+                    <td className={`px-4 py-3 font-semibold ${isDelivered ? 'text-emerald-800' : ''}`}>
+                      {isDelivered && <span className="mr-1.5">✅</span>}
+                      {p.descripcion}
+                      {p.urgente && <span className="ml-1 badge badge-amber" style={{fontSize:'9px'}}>URG</span>}
+                    </td>
+                    <td className="px-4 py-3 text-slate-500 text-xs">{p.area}</td>
+                    <td className="px-4 py-3 text-slate-500 text-xs">
+                      {p.stage === 1 || p.stage === 3
+                        ? 'Secretaría'
+                        : p.stage === 2 || p.stage === 4
+                          ? 'Compras'
+                          : p.stage === 5
+                            ? 'Tesorería'
+                            : p.stage === 6
+                              ? 'Admin'
+                              : '—'}
+                    </td>
+                    <td className="px-4 py-3"><span className={`badge ${stageBadgeClass(p.stage)}`}>{pedidoEstadoVisibleLabel(p)}</span></td>
+                    <td className="px-4 py-3 font-mono text-sm">{formatMoney(p.monto)}</td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         )}

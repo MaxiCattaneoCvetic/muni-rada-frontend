@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { pedidosApi, presupuestosApi, selladosApi, pagosApi } from '../../api/services';
 import { useAuthStore } from '../../store/auth.store';
 import { formatMoney, formatDate, formatDateTime, stageBadgeClass, stageIcon, rolLabel, pedidoEstadoVisibleLabel } from '../../lib/utils';
-import { buildPedidoAuditResumen, buildPedidoAuditTimeline } from '../../lib/pedido-audit';
+import { buildPedidoAuditResumen, buildPedidoAuditTimeline, buildAuditTimelineFromLog } from '../../lib/pedido-audit';
 import { getCurrentStepMessage } from '../../lib/pedido-flow-messages';
 import { ActionModal } from '../../components/ui/ActionModal';
 import { OcViewerModal } from '../../components/ui/OcViewerModal';
@@ -65,6 +65,11 @@ export function PedidoDetallePage() {
     queryKey: ['comentarios', id],
     queryFn: () => pedidosApi.getComentarios(id!),
     enabled: !!id,
+  });
+  const { data: auditLogs = [] } = useQuery({
+    queryKey: ['audit-log', id],
+    queryFn: () => pedidosApi.getAuditLog(id!),
+    enabled: !!id && activeTab === 'auditoria',
   });
   const addComentarioMutation = useMutation({
     mutationFn: (texto: string) => pedidosApi.addComentario(id!, texto),
@@ -135,6 +140,8 @@ export function PedidoDetallePage() {
     pago,
   };
 
+  const recepcionAreaLabel = pedido.areaRecepcion || pedido.area || '—';
+
   const getCompletedStepMessage = (stage: number) => {
     switch (stage) {
       case PedidoStage.APROBACION:
@@ -162,7 +169,7 @@ export function PedidoDetallePage() {
         return 'El pedido quedó en espera de entrega / recepción.';
       case PedidoStage.SUMINISTROS_LISTOS:
         return pedido.recepcionConfirmadaPor
-          ? `Recepción confirmada por ${fullName(pedido.recepcionConfirmadaPor)}.`
+          ? `Confirmó: ${fullName(pedido.recepcionConfirmadaPor)} · Área receptora: ${recepcionAreaLabel}.`
           : 'La recepción quedó confirmada.';
       default:
         return null;
@@ -185,7 +192,9 @@ export function PedidoDetallePage() {
         if (pago) return `Pago: ${pago.numeroTransferencia}`;
         return null;
       case PedidoStage.SUMINISTROS_LISTOS:
-        return pedido.recepcionConfirmadaPor ? `Confirmó: ${fullName(pedido.recepcionConfirmadaPor)}` : null;
+        return pedido.recepcionConfirmadaPor
+          ? `Confirmó: ${fullName(pedido.recepcionConfirmadaPor)} · Recibió: ${recepcionAreaLabel}`
+          : null;
       case PedidoStage.RECHAZADO:
         return pedido.notaRechazo || null;
       default:
@@ -194,7 +203,10 @@ export function PedidoDetallePage() {
   };
 
   const isStepCompleted = (stage: number) => {
-    if (!isRejected) return pedido.stage > stage;
+    if (!isRejected) {
+      if (stage === PedidoStage.SUMINISTROS_LISTOS) return pedido.stage === PedidoStage.SUMINISTROS_LISTOS;
+      return pedido.stage > stage;
+    }
     switch (stage) {
       case PedidoStage.APROBACION:
         return Boolean(pedido.aprobadoPor);
@@ -209,7 +221,7 @@ export function PedidoDetallePage() {
       case PedidoStage.ESPERANDO_SUMINISTROS:
         return Boolean(pedido.recepcionConfirmadaPor);
       case PedidoStage.SUMINISTROS_LISTOS:
-        return false;
+        return Boolean(pedido.recepcionConfirmadaPor);
       default:
         return false;
     }
@@ -411,7 +423,10 @@ export function PedidoDetallePage() {
     (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
   );
 
-  const auditTimeline = buildPedidoAuditTimeline(pedido, presupuestos, sellado ?? null, pago ?? null);
+  const syntheticTimeline = buildPedidoAuditTimeline(pedido, presupuestos, sellado ?? null, pago ?? null);
+  const dbTimeline = buildAuditTimelineFromLog(auditLogs);
+  // Use DB log entries when available; fall back to synthetic timeline for events not yet in DB
+  const auditTimeline = dbTimeline.length > 0 ? dbTimeline : syntheticTimeline;
   const auditResumen = buildPedidoAuditResumen(pedido, presupuestos);
 
   const handleSendMessage = () => {
@@ -430,6 +445,15 @@ export function PedidoDetallePage() {
   const canRecepcion = user?.rol === 'admin' && pedido.stage === PedidoStage.ESPERANDO_SUMINISTROS;
   const canGestionarPresupuestos =
     (user?.rol === 'compras' || user?.rol === 'admin') && pedido.stage === PedidoStage.PRESUPUESTOS;
+  const canDeletePedido =
+    pedido.stage === PedidoStage.APROBACION
+    && !!user
+    && (
+      pedido.creadoPor?.id === user.id
+      || user.rol === 'secretaria'
+      || user.rol === 'admin'
+      || user.areaAsignada === 'Sistemas'
+    );
 
   const presupuestoElegidoFirma = presupuestoParaFirmaId
     ? presupuestos.find((p) => p.id === presupuestoParaFirmaId)
@@ -587,6 +611,7 @@ export function PedidoDetallePage() {
           {canPago && <button onClick={() => setModal('pago')} className="btn btn-success btn-sm">💳 Registrar pago</button>}
           {canRecepcion && <button onClick={() => setModal('confirmar-recepcion')} className="btn btn-success btn-sm">📦 Confirmar recepción</button>}
           {canRechazar && <button onClick={() => setModal('rechazar')} className="btn btn-danger btn-sm">✗ Rechazar</button>}
+          {canDeletePedido && <button onClick={() => setModal('eliminar')} className="btn btn-danger btn-sm">🗑 Eliminar pedido</button>}
           {!!pedido.ordenCompraUrl && !!pedido.ordenCompraNumero && (
             <button
               type="button"
@@ -638,7 +663,7 @@ export function PedidoDetallePage() {
           <div className="space-y-0">
             {FLOW_STEPS.map((step, i) => {
               const done = isStepCompleted(step.stage);
-              const current = pedido.stage === step.stage;
+              const current = pedido.stage === step.stage && !done;
               const pending = !done && !current;
               const summary = current
                 ? getCurrentStepMessage(step.stage, currentStepMessageContext)
@@ -686,7 +711,9 @@ export function PedidoDetallePage() {
       {activeTab === 'auditoria' && (
         <div className="space-y-4">
           <p className="text-sm text-slate-500 px-1">
-            Registro derivado de los datos del pedido (quién creó, quién cargó cotizaciones, quién aprobó o rechazó, firmas, tesorería y cierre).
+            {dbTimeline.length > 0
+              ? `Historial registrado en la base de datos (${dbTimeline.length} evento${dbTimeline.length !== 1 ? 's' : ''}). Quién hizo cada acción, desde qué área y con qué notas.`
+              : 'Registro derivado de los datos del pedido (quién creó, quién cargó cotizaciones, quién aprobó o rechazó, firmas, tesorería y cierre).'}
           </p>
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="card p-4 border-l-4 border-l-blue-400">
@@ -1100,7 +1127,19 @@ export function PedidoDetallePage() {
           firmarPresupuesto={modal === 'firmar' ? presupuestoElegidoFirma ?? null : null}
           rechazarMeta={modal === 'rechazar' ? { presupuestosCargados: presupuestos.length } : null}
           onClose={() => setModal(null)}
-          onSuccess={() => { setModal(null); refetch(); }}
+          onSuccess={() => {
+            const completedAction = modal;
+            setModal(null);
+            if (completedAction === 'eliminar') {
+              qc.invalidateQueries({ queryKey: ['pedidos'] });
+              qc.invalidateQueries({ queryKey: ['pedidos-admin'] });
+              qc.invalidateQueries({ queryKey: ['pedidos-historial-activos'] });
+              qc.invalidateQueries({ queryKey: ['pedidos-historial-archivados'] });
+              navigate('/historial');
+              return;
+            }
+            refetch();
+          }}
         />
       )}
 

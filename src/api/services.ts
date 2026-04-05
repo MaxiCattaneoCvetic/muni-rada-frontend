@@ -4,6 +4,7 @@ import type {
   CreateProveedorDto, UpdateProveedorDto,
   Sellado, Pago, User,
   SistemaConfig, CreateUserDto, UserRole, FinanzasResumen, GastoFinanzas,
+  PedidoAuditLog,
 } from '../types';
 
 // ── AUTH ──────────────────────────────────────────────────────────────
@@ -39,6 +40,8 @@ export const usersApi = {
 export const pedidosApi = {
   getAll: (params?: { stage?: number; area?: string; urgente?: boolean; includeArchived?: boolean }) =>
     api.get<Pedido[]>('/pedidos', { params }).then(r => r.data),
+  remove: (id: string) =>
+    api.delete<{ deleted: true; id: string }>(`/pedidos/${id}`).then(r => r.data),
   archivar: (id: string) => api.patch<Pedido>(`/pedidos/${id}/archivar`).then(r => r.data),
   desarchivar: (id: string) => api.patch<Pedido>(`/pedidos/${id}/desarchivar`).then(r => r.data),
   getAllAdmin: (params?: object) =>
@@ -54,7 +57,7 @@ export const pedidosApi = {
     form.append('area', dto.area);
     if (dto.cantidad != null && dto.cantidad !== '') form.append('cantidad', dto.cantidad);
     if (dto.detalle != null && dto.detalle !== '') form.append('detalle', dto.detalle);
-    form.append('urgente', dto.urgente ? 'true' : 'false');
+    if (dto.urgente) form.append('urgente', 'true');
     referencias?.forEach((file) => form.append('referencias', file));
     return api.post<Pedido>('/pedidos', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
@@ -84,8 +87,10 @@ export const pedidosApi = {
   },
   rechazarPresupuesto: (id: string, motivo: string) =>
     api.patch<Pedido>(`/pedidos/${id}/rechazar-presupuesto`, { motivo }).then(r => r.data),
-  confirmarRecepcion: (id: string, nota?: string) =>
-    api.patch<Pedido>(`/pedidos/${id}/confirmar-recepcion`, { nota }).then(r => r.data),
+  confirmarRecepcion: (id: string, nota?: string, areaRecepcion?: string) =>
+    api.patch<Pedido>(`/pedidos/${id}/confirmar-recepcion`, { nota, areaRecepcion }).then(r => r.data),
+  getAuditLog: (id: string) =>
+    api.get<PedidoAuditLog[]>(`/pedidos/${id}/audit-log`).then(r => r.data),
   subirFactura: (id: string, factura: File, fechaLimitePago?: string) => {
     const form = new FormData();
     form.append('factura', factura);
@@ -167,9 +172,9 @@ export const pagosApi = {
 
 // ── FINANZAS ──────────────────────────────────────────────────────────
 export const finanzasApi = {
-  getResumen: (params?: { year?: number; area?: string; proveedor?: string }) =>
+  getResumen: (params?: { year?: number; area?: string; proveedor?: string; monthStart?: number; monthEnd?: number }) =>
     api.get<FinanzasResumen>('/finanzas/resumen', { params }).then(r => r.data),
-  getGastos: (params?: { year?: number; area?: string; proveedor?: string }) =>
+  getGastos: (params?: { year?: number; area?: string; proveedor?: string; monthStart?: number; monthEnd?: number }) =>
     api.get<GastoFinanzas[]>('/finanzas/gastos', { params }).then(r => r.data),
 };
 
