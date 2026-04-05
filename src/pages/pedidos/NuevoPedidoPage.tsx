@@ -11,7 +11,6 @@ import {
   Car,
   Check,
   ChevronDown,
-  ClipboardList,
   Coins,
   Eye,
   FileText,

@@ -11,6 +11,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import type { MouseHandlerDataParam } from 'recharts';
 import { finanzasApi } from '../../api/services';
 import { AREAS, type AreaMunicipal, type FinanzasResumen, type GastoFinanzas } from '../../types';
 import { exportFinanzasExcel } from '../../lib/finanzas-excel';
@@ -115,14 +116,6 @@ function compactLabel(value: string, max = 18) {
 function formatPercent(value: number) {
   return `${Math.round(value)}%`;
 }
-
-type ChartClickState = {
-  activePayload?: Array<{
-    payload?: {
-      mes?: string;
-    };
-  }>;
-};
 
 export function FinanzasPage() {
   const currentYear = new Date().getFullYear();
@@ -337,8 +330,10 @@ export function FinanzasPage() {
     }
   }, [selectedMonth, visibleMonths]);
 
-  const handleChartClick = (state: ChartClickState) => {
-    const payload = state?.activePayload?.[0]?.payload;
+  const handleChartClick = (state: MouseHandlerDataParam) => {
+    const idx = state.activeTooltipIndex ?? state.activeIndex;
+    if (typeof idx !== 'number' || idx < 0 || idx >= monthlyTotalChartData.length) return;
+    const payload = monthlyTotalChartData[idx];
     if (!payload?.mes) return;
     setSelectedMonth({
       key: payload.mes,
